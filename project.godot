@@ -10,7 +10,7 @@ config_version=5
 
 [application]
 
-config/name="Tetrot"
+config/name="Tandora"
 run/main_scene="uid://2nukcqpjapmg"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://icon.svg"

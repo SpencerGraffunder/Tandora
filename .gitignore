@@ -19,7 +19,7 @@ mono_crash.*.json
 
 # macos
 .DS_Store
-Tetrot.console.exe
-Tetrot.exe
+Tandora.console.exe
+Tandora.exe
 
 build/

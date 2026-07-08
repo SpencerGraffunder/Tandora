@@ -15,11 +15,11 @@
 
 [sub_resource type="LabelSettings" id="LabelSettings_ras1x"]
 font = ExtResource("1_cdhm0")
-font_size = 150
+font_size = 119
 
 [sub_resource type="LabelSettings" id="LabelSettings_oeg6l"]
 font = ExtResource("1_cdhm0")
-font_size = 40
+font_size = 45
 
 [sub_resource type="LabelSettings" id="LabelSettings_cdhm0"]
 font = ExtResource("1_cdhm0")
@@ -53,14 +53,14 @@ alignment = 1
 
 [node name="TitleLabel" type="Label" parent="VBoxContainer" unique_id=747725941]
 layout_mode = 2
-text = "Tetrot"
+text = "Tandora"
 label_settings = SubResource("LabelSettings_ras1x")
 horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="Label" type="Label" parent="VBoxContainer" unique_id=654940093]
 layout_mode = 2
-text = "(With a silent T)"
+text = "Clear lines in tandem"
 label_settings = SubResource("LabelSettings_oeg6l")
 horizontal_alignment = 1
 
@@ -71,7 +71,10 @@ layout_mode = 2
 layout_mode = 2
 size_flags_horizontal = 3
 disabled = true
-text = "Create"
+text = "Create Room"
+
+[node name="HSeparator2" type="HSeparator" parent="VBoxContainer" unique_id=98614163]
+layout_mode = 2
 
 [node name="HBoxContainer" type="HBoxContainer" parent="VBoxContainer" unique_id=2104086776]
 layout_mode = 2
@@ -86,7 +89,7 @@ max_length = 3
 layout_mode = 2
 size_flags_horizontal = 3
 disabled = true
-text = "Join"
+text = "Join room"
 
 [node name="KeyboardSpacer" type="Control" parent="VBoxContainer" unique_id=1758501667]
 layout_mode = 2
