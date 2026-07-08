@@ -4,6 +4,7 @@
 [ext_resource type="FontFile" uid="uid://bdm02i5sgfo3h" path="res://assets/MunroSmall-wPZw.ttf" id="1_cdhm0"]
 [ext_resource type="Theme" uid="uid://biuq255lfquw4" path="res://assets/theme.tres" id="1_qbi84"]
 [ext_resource type="PackedScene" uid="uid://bedex7cxn0q5o" path="res://scenes/Background.tscn" id="2_ras1x"]
+[ext_resource type="Texture2D" uid="uid://bf0qnsiarwx6r" path="res://assets/icon_transparent.png" id="4_h77bf"]
 [ext_resource type="Texture2D" uid="uid://ctd4trtu5l884" path="res://assets/tile_1.png" id="5_wuide"]
 [ext_resource type="Texture2D" uid="uid://bnolhommg3ix5" path="res://assets/tile_2.png" id="6_h77bf"]
 [ext_resource type="Texture2D" uid="uid://b7gfqrv4ahp4m" path="res://assets/tile_3.png" id="7_4hpk5"]
@@ -46,10 +47,17 @@ anchor_top = 0.4
 anchor_right = 0.5
 anchor_bottom = 0.6
 offset_left = -200.0
+offset_top = -350.0
 offset_right = 200.0
+offset_bottom = 200.0
 grow_horizontal = 2
 grow_vertical = 2
 alignment = 1
+
+[node name="Icon" type="TextureRect" parent="VBoxContainer" unique_id=187342567]
+layout_mode = 2
+texture = ExtResource("4_h77bf")
+expand_mode = 5
 
 [node name="TitleLabel" type="Label" parent="VBoxContainer" unique_id=747725941]
 layout_mode = 2
