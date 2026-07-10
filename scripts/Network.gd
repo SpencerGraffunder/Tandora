@@ -37,8 +37,9 @@ func _set_server_address_and_protocol():
 		USE_WSS = false
 		print_verbose("[DEBUG] Using LOCAL server address:", SERVER_ADDRESS, "USE_WSS:", USE_WSS)
 	else:
-		SERVER_ADDRESS = "tandoraserver.nuclearquads.com"
-		USE_WSS = true
+		SERVER_ADDRESS = "tandoraserver.nuclearquads.com:%d" % PORT
+		#SERVER_ADDRESS = "50.55.36.42:%d" % PORT
+		USE_WSS = false
 		print_verbose("[DEBUG] Using REMOTE server address:", SERVER_ADDRESS, "USE_WSS:", USE_WSS)
 
 @rpc("any_peer", "call_remote", "reliable")
@@ -57,7 +58,7 @@ func start_dedicated_server():
 		return
 	multiplayer.multiplayer_peer = peer
 	print_verbose("[SERVER] WebSocket server started on port ", PORT)
-	print_verbose("[SERVER] Ready to host at ws://0.0.0.0:", PORT)
+	print("[SERVER] Ready to host at ws://0.0.0.0:", PORT)
 
 func connect_to_server():
 	var peer = WebSocketMultiplayerPeer.new()
@@ -69,7 +70,7 @@ func connect_to_server():
 		printerr("[CLIENT] Failed to connect to WebSocket server at ", uri, ": error code ", error)
 		return
 	multiplayer.multiplayer_peer = peer
-	print_verbose("[CLIENT] Connecting to WebSocket server at ", uri)
+	print("[CLIENT] Connecting to WebSocket server at ", uri)
 
 func get_player_number() -> int:
 	if multiplayer.is_server():
