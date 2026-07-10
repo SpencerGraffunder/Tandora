@@ -22,4 +22,6 @@ mono_crash.*.json
 Tandora.console.exe
 Tandora.exe
 
-build/
+build_web/
+build_linux/
+build_ios/
