@@ -22,10 +22,6 @@ Network="*uid://qxxkd3v7yj7j"
 RoomManager="*uid://ci52dx5b8qf8p"
 DeviceID="*res://scripts/DeviceID.gd"
 
-[debug]
-
-settings/stdout/verbose_stdout=true
-
 [display]
 
 window/size/viewport_width=540

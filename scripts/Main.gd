@@ -27,6 +27,9 @@ var prev_move_left: bool = false
 var prev_move_right: bool = false
 var prev_move_down: bool = false
 
+var _last_received_seq: int = -1
+var _waiting_for_full_sync: bool = false
+
 func _ready():
 	local_player_number = Network.starting_player_number
 	local_player_count = Network.starting_player_count
@@ -104,19 +107,113 @@ func _on_button(control: String, pressed: bool) -> void:
 
 @rpc("authority", "call_remote", "unreliable_ordered")
 func rpc_sync_state(data: PackedByteArray):
-	var state_dict = bytes_to_var(data)
-	game_board.apply_state(state_dict)
-	score_label.text = "Score: " + str(state_dict.score)
-	level_label.text = "Level: " + str(state_dict.level)
-	lines_label.text = "Lines: " + str(state_dict.lines_cleared)
-	for i in range(state_dict.players.size()):
-		var pd = state_dict.players[i]
+	var buf := StreamPeerBuffer.new()
+	buf.data_array = data
+	buf.seek(0)
+
+	var header = buf.get_u8()
+
+	if header == 0x00:
+		# Full snapshot — always apply regardless of dirty state
+		_apply_full_snapshot(buf)
+		_waiting_for_full_sync = false
+	elif header == 0x01:
+		# Delta packet
+		if _waiting_for_full_sync:
+			# Dirty — discard until we get a full snapshot
+			return
+		var seq = buf.get_u16()
+		# Check for gap: seq should be exactly last+1, wrapping at 65535
+		var expected = (_last_received_seq + 1) & 0xFFFF
+		if _last_received_seq != -1 and seq != expected:
+			print_verbose("[CLIENT] Sequence gap detected: expected ", expected, " got ", seq, " — requesting full sync")
+			_waiting_for_full_sync = true
+			Network.rpc_request_full_sync.rpc_id(1)
+			return
+		_last_received_seq = seq
+		_apply_delta(buf)
+
+func _apply_full_snapshot(buf: StreamPeerBuffer) -> void:
+	var score = buf.get_u32()
+	var level = buf.get_u16()
+	var lines = buf.get_u32()
+	score_label.text = "Score: " + str(score)
+	level_label.text = "Level: " + str(level)
+	lines_label.text = "Lines: " + str(lines)
+
+	var player_count = buf.get_u8()
+	var players_state = []
+	for i in range(player_count):
+		players_state.append(_read_player_from_buffer(buf))
+
+	var cell_count = buf.get_u16()
+	# Full snapshot: reset board to all BLANK first, then apply cells
+	game_board.reset_board_to_blank()
+	for i in range(cell_count):
+		var packed = buf.get_u16()
+		var row = (packed >> 11) & 0x1F
+		var col = (packed >> 5) & 0x3F
+		var value = ((packed >> 1) & 0xF) - 1  # decode: subtract 1, BLANK = -1
+		game_board.set_cell(row, col, value)
+
+	_apply_players_state(players_state)
+
+func _apply_delta(buf: StreamPeerBuffer) -> void:
+	var score = buf.get_u32()
+	var level = buf.get_u16()
+	var lines = buf.get_u32()
+	score_label.text = "Score: " + str(score)
+	level_label.text = "Level: " + str(level)
+	lines_label.text = "Lines: " + str(lines)
+
+	var player_count = buf.get_u8()
+	var players_state = []
+	for i in range(player_count):
+		players_state.append(_read_player_from_buffer(buf))
+
+	var cell_count = buf.get_u16()
+	for i in range(cell_count):
+		var packed = buf.get_u16()
+		var row = (packed >> 11) & 0x1F
+		var col = (packed >> 5) & 0x3F
+		var value = ((packed >> 1) & 0xF) - 1  # decode: subtract 1, BLANK = -1
+		game_board.set_cell(row, col, value)
+
+	_apply_players_state(players_state)
+
+func _read_player_from_buffer(buf: StreamPeerBuffer) -> Dictionary:
+	var pd = {}
+	pd.player_number = buf.get_u8()
+	pd.piece_type = buf.get_u8()
+	if pd.piece_type == 255:
+		pd.piece_type = -1
+	pd.piece_player = buf.get_u8()
+	if pd.piece_player == 255:
+		pd.piece_player = -1
+	var piece_loc_count = buf.get_u8()
+	pd.piece_locs = []
+	for i in range(piece_loc_count):
+		pd.piece_locs.append([buf.get_u8(), buf.get_u8()])  # col, row
+	pd.next_type = buf.get_u8()
+	if pd.next_type == 255:
+		pd.next_type = -1
+	var next_loc_count = buf.get_u8()
+	pd.next_locs = []
+	for i in range(next_loc_count):
+		pd.next_locs.append([buf.get_u8(), buf.get_u8()])  # col, row
+	return pd
+
+func _apply_players_state(players_state: Array) -> void:
+	for i in range(players_state.size()):
+		var pd = players_state[i]
 		if pd.next_locs.size() > 0:
 			var dummy_piece = PieceScript.new(pd.next_type, pd.player_number, 0, local_player_count)
 			for j in range(pd.next_locs.size()):
 				dummy_piece.locations[j] = Vector2i(pd.next_locs[j][0], pd.next_locs[j][1])
 			if i < previews.size():
 				previews[i].set_piece(dummy_piece, i, local_player_count)
+	game_board.set_active_pieces(players_state)
+	game_board.queue_redraw()
 
 func _on_pause_pressed():
 	Network.rpc_player_input.rpc_id(1, local_player_number, "PAUSE", true)

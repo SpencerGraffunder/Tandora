@@ -1,8 +1,11 @@
 extends Node
 
 const GameLogicScript = preload("res://scripts/GameLogic.gd")
+const Enums = preload("res://scripts/Enums.gd")
 const ROOM_TIMEOUT = 900  # 15 minutes in seconds
 const CHARS = "0123456789abcdefghijklmnopqrstuvwxyz"
+const FULL_SYNC_HEADER: int = 0x00
+const DELTA_HEADER: int = 0x01
 
 var rooms: Dictionary = {}  # code -> Room
 var peer_to_room: Dictionary = {}  # peer_id -> room_code
@@ -15,6 +18,9 @@ class Room:
 	var creator: int = 0
 	var starting_level: int = 0
 	var idle_timer: float = 0.0
+	var last_sent_board: Array = []   # flat copy of board after last send
+	var last_sent_seq: int = 0        # sequence number of last sent delta packet
+	var has_sent_initial_snapshot: bool = false
 
 	func _init(p_code: String, p_creator: int):
 		code = p_code
@@ -28,7 +34,7 @@ func generate_code() -> String:
 	while true:
 		var code = ""
 		for i in range(code_length):
-			code += String.chr(randi() % 26 + 97) # 97 is 'a', 26 letters
+			code += String.chr(randi() % 26 + 97)
 		if not rooms.has(code):
 			return code
 	return ""
@@ -71,7 +77,6 @@ func reassign_peer(code: String, old_peer_id: int, new_peer_id: int) -> void:
 	if not room.peers.has(old_peer_id):
 		print_verbose("[SERVER RoomManager] reassign_peer: old_peer_id ", old_peer_id, " not in room ", code)
 		return
-	# Remove old peer, add new peer
 	room.peers.erase(old_peer_id)
 	if not room.peers.has(new_peer_id):
 		room.peers.append(new_peer_id)
@@ -119,6 +124,15 @@ func start_room(code: String) -> bool:
 	room.logic.reset(room.peers.size(), room.starting_level)
 	room.logic.game_over_triggered.connect(func(): _on_game_over(code))
 	room.started = true
+	# Initialize last_sent_board to all BLANK so first tick diffs as fully changed
+	var board_width = (4 * room.peers.size()) + 6
+	room.last_sent_board = []
+	for r in range(Enums.TOTAL_ROWS):
+		var row = []
+		for c in range(board_width):
+			row.append(Enums.TileType.BLANK)
+		room.last_sent_board.append(row)
+	room.last_sent_seq = 0
 	print_verbose("Room started: ", code, " with ", room.peers.size(), " players")
 	return true
 
@@ -148,14 +162,77 @@ func _sync_room_state(code: String) -> void:
 	if not rooms.has(code):
 		return
 	var room = rooms[code]
-	var state_data = _serialize_state(room)
-	for peer_id in room.peers:
-		Network.rpc_sync_state.rpc_id(peer_id, state_data)
+	var board = room.logic.state.board
+	
+	if not room.has_sent_initial_snapshot:
+		var players_data = _serialize_players(room)
+		var score_data = {
+			"score": room.logic.state.score,
+			"level": room.logic.state.current_level,
+			"lines_cleared": room.logic.lines_cleared
+		}
+		var packet = _serialize_full_snapshot(room, players_data, score_data)
+		# Update last_sent_board
+		for r in range(board.size()):
+			for c in range(board[r].size()):
+				room.last_sent_board[r][c] = board[r][c]
+		for peer_id in room.peers:
+			Network.rpc_sync_state.rpc_id(peer_id, packet)
+		room.has_sent_initial_snapshot = true
+		return
 
-func _serialize_state(room) -> PackedByteArray:
-	var board_data = []
-	for row in room.logic.state.board:
-		board_data.append(row.duplicate())
+	# Build changed cells list by diffing against last_sent_board
+	var changed_cells: Array = []  # each entry: [row, col, value]
+	for r in range(board.size()):
+		for c in range(board[r].size()):
+			var current_val = board[r][c]
+			var last_val = room.last_sent_board[r][c] if room.last_sent_board.size() > r else Enums.TileType.BLANK
+			if current_val != last_val:
+				changed_cells.append([r, c, current_val])
+
+	# Serialize player piece state (always included, small)
+	var players_data = _serialize_players(room)
+
+	# Serialize score data
+	var score_data = {
+		"score": room.logic.state.score,
+		"level": room.logic.state.current_level,
+		"lines_cleared": room.logic.lines_cleared
+	}
+
+	var packet: PackedByteArray
+	var full_cell_count = board.size() * board[0].size()
+
+	if changed_cells.size() >= full_cell_count:
+		# Delta is at least as big as full board — send full snapshot
+		packet = _serialize_full_snapshot(room, players_data, score_data)
+	else:
+		room.last_sent_seq = (room.last_sent_seq + 1) & 0xFFFF
+		packet = _serialize_delta(room, changed_cells, players_data, score_data)
+
+	# Update last_sent_board to current state
+	for r in range(board.size()):
+		for c in range(board[r].size()):
+			room.last_sent_board[r][c] = board[r][c]
+
+	for peer_id in room.peers:
+		Network.rpc_sync_state.rpc_id(peer_id, packet)
+
+# Sends a full snapshot to a single peer (for resync requests)
+func send_full_snapshot_to_peer(peer_id: int) -> void:
+	var room = get_room_for_peer(peer_id)
+	if room == null or not room.started:
+		return
+	var players_data = _serialize_players(room)
+	var score_data = {
+		"score": room.logic.state.score,
+		"level": room.logic.state.current_level,
+		"lines_cleared": room.logic.lines_cleared
+	}
+	var packet = _serialize_full_snapshot(room, players_data, score_data)
+	Network.rpc_sync_state.rpc_id(peer_id, packet)
+
+func _serialize_players(room) -> Array:
 	var players_data = []
 	for p in room.logic.state.players:
 		var piece_locs = []
@@ -180,13 +257,94 @@ func _serialize_state(room) -> PackedByteArray:
 			"next_locs": next_locs,
 			"next_type": next_type
 		})
-	return var_to_bytes({
-		"board": board_data,
-		"players": players_data,
-		"score": room.logic.state.score,
-		"level": room.logic.state.current_level,
-		"lines_cleared": room.logic.lines_cleared
-	})
+	return players_data
+
+# Packet format (full snapshot):
+# [0x00]                    1 byte  header
+# [score]                   4 bytes int32
+# [level]                   2 bytes uint16
+# [lines_cleared]           4 bytes int32
+# [player_count]            1 byte
+# [per player: see _write_player_to_buffer]
+# [cell_count]              2 bytes uint16 — number of non-BLANK cells
+# [per cell: uint16]        2 bytes each, see _pack_cell
+func _serialize_full_snapshot(room, players_data: Array, score_data: Dictionary) -> PackedByteArray:
+	var buf := StreamPeerBuffer.new()
+	buf.put_u8(FULL_SYNC_HEADER)
+	buf.put_u32(score_data.score)
+	buf.put_u16(score_data.level)
+	buf.put_u32(score_data.lines_cleared)
+	buf.put_u8(players_data.size())
+	for pd in players_data:
+		_write_player_to_buffer(buf, pd)
+
+	# Write all non-BLANK cells
+	var board = room.logic.state.board
+	var non_blank: Array = []
+	for r in range(board.size()):
+		for c in range(board[r].size()):
+			if board[r][c] != Enums.TileType.BLANK:
+				non_blank.append([r, c, board[r][c]])
+	buf.put_u16(non_blank.size())
+	for cell in non_blank:
+		buf.put_u16(_pack_cell(cell[0], cell[1], cell[2]))
+
+	return buf.data_array
+
+# Packet format (delta):
+# [0x01]                    1 byte  header
+# [seq]                     2 bytes uint16
+# [score]                   4 bytes int32
+# [level]                   2 bytes uint16
+# [lines_cleared]           4 bytes int32
+# [player_count]            1 byte
+# [per player: see _write_player_to_buffer]
+# [cell_count]              2 bytes uint16 — number of changed cells
+# [per cell: uint16]        2 bytes each, see _pack_cell
+func _serialize_delta(room, changed_cells: Array, players_data: Array, score_data: Dictionary) -> PackedByteArray:
+	var buf := StreamPeerBuffer.new()
+	buf.put_u8(DELTA_HEADER)
+	buf.put_u16(room.last_sent_seq)
+	buf.put_u32(score_data.score)
+	buf.put_u16(score_data.level)
+	buf.put_u32(score_data.lines_cleared)
+	buf.put_u8(players_data.size())
+	for pd in players_data:
+		_write_player_to_buffer(buf, pd)
+	buf.put_u16(changed_cells.size())
+	for cell in changed_cells:
+		buf.put_u16(_pack_cell(cell[0], cell[1], cell[2]))
+	return buf.data_array
+
+# Per-player layout:
+# [player_number]           1 byte
+# [piece_type]              1 byte (255 = no piece)
+# [piece_player]            1 byte (255 = no piece)
+# [piece_loc_count]         1 byte
+# [per loc: col, row]       2 bytes each (1 byte col, 1 byte row)
+# [next_type]               1 byte (255 = no next)
+# [next_loc_count]          1 byte
+# [per loc: col, row]       2 bytes each
+func _write_player_to_buffer(buf: StreamPeerBuffer, pd: Dictionary) -> void:
+	buf.put_u8(pd.player_number)
+	buf.put_u8(pd.piece_type if pd.piece_type != -1 else 255)
+	buf.put_u8(pd.piece_player if pd.piece_player != -1 else 255)
+	buf.put_u8(pd.piece_locs.size())
+	for loc in pd.piece_locs:
+		buf.put_u8(loc[0])  # col
+		buf.put_u8(loc[1])  # row
+	buf.put_u8(pd.next_type if pd.next_type != -1 else 255)
+	buf.put_u8(pd.next_locs.size())
+	for loc in pd.next_locs:
+		buf.put_u8(loc[0])  # col
+		buf.put_u8(loc[1])  # row
+
+# Cell packing: 16 bits
+# [row: 5 bits][col: 6 bits][value+1: 4 bits][unused: 1 bit]
+# value is stored as value+1 so BLANK(-1) becomes 0, types 0-8 become 1-9
+func _pack_cell(row: int, col: int, value: int) -> int:
+	var encoded_value = value + 1  # BLANK(-1)->0, types 0-8 -> 1-9
+	return ((row & 0x1F) << 11) | ((col & 0x3F) << 5) | ((encoded_value & 0xF) << 1)
 
 func _on_game_over(code: String) -> void:
 	if not rooms.has(code):

@@ -41,6 +41,14 @@ func _set_server_address_and_protocol():
 		USE_WSS = true
 		print_verbose("[DEBUG] Using REMOTE server address:", SERVER_ADDRESS, "USE_WSS:", USE_WSS)
 
+@rpc("any_peer", "call_remote", "reliable")
+func rpc_request_full_sync():
+	if not is_dedicated_server:
+		return
+	var sender = multiplayer.get_remote_sender_id()
+	print_verbose("[SERVER] rpc_request_full_sync: Peer ", sender, " requested full snapshot")
+	RoomManager.send_full_snapshot_to_peer(sender)
+
 func start_dedicated_server():
 	var peer = WebSocketMultiplayerPeer.new()
 	var error = peer.create_server(PORT)

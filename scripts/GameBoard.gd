@@ -31,7 +31,7 @@ func init_board(player_count: int):
 	for r in range(Enums.TOTAL_ROWS):
 		var row = []
 		for c in range(cols):
-			row.append(Enums.EMPTY)
+			row.append(Enums.TileType.BLANK)
 		board.append(row)
 	queue_redraw()
 
@@ -68,19 +68,19 @@ func get_tile_texture(player_or_tile_value: int, player_count: int):
 func _draw():
 	if game_state == null:
 		return
-	for r in range(game_state.board.size()):
-		for c in range(game_state.board[r].size()):
-			var tile = game_state.board[r][c]
-			var tex = tile_textures[0]
-			if tile != Enums.TileType.BLANK:
-				tex = get_tile_texture(tile, game_state.players.size())
+	for r in range(board.size()):
+		for c in range(board[r].size()):
+			var tile = board[r][c]
 			var screen_row = r - 2
 			if screen_row < 0:
 				continue
+			var tex = tile_textures[0]
+			if tile != Enums.TileType.BLANK:
+				tex = get_tile_texture(tile, game_state.players.size())
 			var pos = Vector2(offset.x + c * tile_size, offset.y + screen_row * tile_size)
 			if tex:
 				draw_texture_rect(tex, Rect2(pos, Vector2(tile_size, tile_size)), false)
-	
+
 	for p in game_state.players:
 		if p.active_piece != null:
 			for loc in p.active_piece.locations:
@@ -93,18 +93,26 @@ func _draw():
 				if tex:
 					draw_texture_rect(tex, Rect2(pos, Vector2(tile_size, tile_size)), false)
 
-func apply_state(state_dict: Dictionary) -> void:
-	game_state = state_dict
+func reset_board_to_blank() -> void:
+	for r in range(board.size()):
+		for c in range(board[r].size()):
+			board[r][c] = Enums.TileType.BLANK
 
-	for i in range(game_state.players.size()):
-		var pd = game_state.players[i]
+func set_cell(row: int, col: int, value: int) -> void:
+	if row < board.size() and col < board[row].size():
+		board[row][col] = value
 
-		if pd.piece_locs.size() > 0:
-			var piece = PieceScript.new(pd.piece_type, pd.piece_player, 0, game_state.players.size())
+func set_active_pieces(players_state: Array) -> void:
+	# Store player active piece state for _draw
+	# Replace game_state.players with this lightweight version
+	if game_state == null:
+		game_state = {}
+	game_state["players"] = []
+	for pd in players_state:
+		var player_entry = { "player_number": pd.player_number, "active_piece": null }
+		if pd.piece_locs.size() > 0 and pd.piece_type != -1:
+			var piece = PieceScript.new(pd.piece_type, pd.piece_player, 0, players_state.size())
 			for j in range(pd.piece_locs.size()):
 				piece.locations[j] = Vector2i(pd.piece_locs[j][0], pd.piece_locs[j][1])
-			pd.active_piece = piece
-		else:
-			pd.active_piece = null
-
-	queue_redraw()
+			player_entry["active_piece"] = piece
+		game_state["players"].append(player_entry)
