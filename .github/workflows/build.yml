@@ -9,7 +9,7 @@ env:
   # Update this to match your project's .godot filename (usually the folder name)
   PROJECT_NAME: "Tandora"
   # The export preset names — must match exactly what's in your export_presets.cfg
-  EXPORT_PRESET_LINUX: "Linux/X11"
+  EXPORT_PRESET_LINUX: "Linux"
   EXPORT_PRESET_WEB: "Web"
 
 jobs:
