@@ -1,0 +1,103 @@
+name: Build Tandora
+
+on:
+  push:
+    branches: ["**"]
+
+env:
+  GODOT_VERSION: "4.7"
+  # Update this to match your project's .godot filename (usually the folder name)
+  PROJECT_NAME: "Tandora"
+  # The export preset names — must match exactly what's in your export_presets.cfg
+  EXPORT_PRESET_LINUX: "Linux/X11"
+  EXPORT_PRESET_WEB: "Web"
+
+jobs:
+  # ── Build Linux server binary ──────────────────────────────────────────────
+  build-linux:
+    name: Build Linux Server
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Godot ${{ env.GODOT_VERSION }} (headless)
+        run: |
+          GODOT_FILENAME="Godot_v${GODOT_VERSION}-stable_linux.x86_64"
+          TEMPLATES_FILENAME="Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+
+          # Download editor (headless export uses the editor binary)
+          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/${GODOT_FILENAME}.zip"
+          unzip -q "${GODOT_FILENAME}.zip"
+          mkdir -p ~/.local/bin
+          mv "${GODOT_FILENAME}" ~/.local/bin/godot
+          chmod +x ~/.local/bin/godot
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+          # Download and install export templates
+          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/${TEMPLATES_FILENAME}"
+          mkdir -p ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+          unzip -q "${TEMPLATES_FILENAME}" -d /tmp/templates
+          mv /tmp/templates/templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable/
+
+      - name: Export Linux Server
+        run: |
+          mkdir -p build/linux
+          godot --headless --export-release "${{ env.EXPORT_PRESET_LINUX }}" "build/linux/${{ env.PROJECT_NAME }}.x86_64"
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tandora-linux-server
+          # Retains the artifact for 30 days by default; bump if you want longer
+          retention-days: 30
+          path: build/linux/
+
+  # ── Build Web export ───────────────────────────────────────────────────────
+  build-web:
+    name: Build Web Export
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Godot ${{ env.GODOT_VERSION }} (headless)
+        run: |
+          GODOT_FILENAME="Godot_v${GODOT_VERSION}-stable_linux.x86_64"
+          TEMPLATES_FILENAME="Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+
+          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/${GODOT_FILENAME}.zip"
+          unzip -q "${GODOT_FILENAME}.zip"
+          mkdir -p ~/.local/bin
+          mv "${GODOT_FILENAME}" ~/.local/bin/godot
+          chmod +x ~/.local/bin/godot
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/${TEMPLATES_FILENAME}"
+          mkdir -p ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+          unzip -q "${TEMPLATES_FILENAME}" -d /tmp/templates
+          mv /tmp/templates/templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable/
+
+      - name: Export Web
+        run: |
+          mkdir -p build/web
+          godot --headless --export-release "${{ env.EXPORT_PRESET_WEB }}" "build/web/index.html"
+
+      - name: Deploy to GitHub Pages repo
+        # Only deploy from main branch — remove this condition if you want all branches to deploy
+        if: github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          # Create a secret in SpencerGraffunder/Tandora called PAGES_DEPLOY_TOKEN
+          # Set it to a GitHub PAT with repo scope on NuclearQuads/nuclearquads.github.io
+          personal_token: ${{ secrets.PAGES_DEPLOY_TOKEN }}
+          external_repository: NuclearQuads/nuclearquads.github.io
+          publish_branch: main
+          publish_dir: build/web
+          # Deploys into a /tandora/ subdirectory so it doesn't clobber other content
+          destination_dir: tandora
+          user_name: "github-actions[bot]"
+          user_email: "github-actions[bot]@users.noreply.github.com"
+          commit_message: "Deploy Tandora web build from ${{ github.sha }}"
