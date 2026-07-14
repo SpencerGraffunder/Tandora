@@ -268,4 +268,3 @@ func rpc_game_over(score: int, level: int):
 	var main = get_tree().current_scene
 	if main.has_method("trigger_game_over"):
 		main.trigger_game_over(score, level)
-		
