@@ -81,13 +81,18 @@ jobs:
 
       - name: Deploy to GitHub Pages repo
         if: github.ref == 'refs/heads/master'
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          personal_token: ${{ secrets.PAGES_DEPLOY_TOKEN }}
-          external_repository: NuclearQuads/nuclearquads.github.io
-          publish_branch: main
-          publish_dir: build_web
-          destination_dir: tandora
-          user_name: "github-actions[bot]"
-          user_email: "github-actions[bot]@users.noreply.github.com"
-          commit_message: "Deploy Tandora web build from ${{ github.sha }}"
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git clone https://x-access-token:${{ secrets.PAGES_DEPLOY_TOKEN }}@github.com/NuclearQuads/nuclearquads.github.io.git pages_repo
+          rm -rf pages_repo/tandora
+          cp -r build_web pages_repo/tandora
+          # Remove any .nojekyll that Godot added inside the tandora folder
+          rm -f pages_repo/tandora/.nojekyll
+          # Remove .nojekyll from repo root if it snuck in
+          rm -f pages_repo/.nojekyll
+          cd pages_repo
+          git add tandora/
+          git add -u .nojekyll 2>/dev/null || true
+          git diff --cached --quiet || git commit -m "Deploy Tandora web build from ${{ github.sha }}"
+          git push
