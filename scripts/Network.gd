@@ -37,7 +37,7 @@ func _set_server_address_and_protocol():
 		USE_WSS = false
 		print_verbose("[DEBUG] Using LOCAL server address:", SERVER_ADDRESS, "USE_WSS:", USE_WSS)
 	else:
-		SERVER_ADDRESS = "tandoraserver.nuclearquads.com:%d" % PORT
+		SERVER_ADDRESS = "tandoraserver.nuclearquads.com"
 		#SERVER_ADDRESS = "50.55.36.42:%d" % PORT
 		USE_WSS = true
 		print_verbose("[DEBUG] Using REMOTE server address:", SERVER_ADDRESS, "USE_WSS:", USE_WSS)
