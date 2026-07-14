@@ -39,7 +39,7 @@ func _set_server_address_and_protocol():
 	else:
 		SERVER_ADDRESS = "tandoraserver.nuclearquads.com:%d" % PORT
 		#SERVER_ADDRESS = "50.55.36.42:%d" % PORT
-		USE_WSS = false
+		USE_WSS = true
 		print_verbose("[DEBUG] Using REMOTE server address:", SERVER_ADDRESS, "USE_WSS:", USE_WSS)
 
 @rpc("any_peer", "call_remote", "reliable")
