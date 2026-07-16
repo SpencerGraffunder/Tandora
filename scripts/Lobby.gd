@@ -41,7 +41,7 @@ func _ready():
 	leave_button.pressed.connect(_on_leave_pressed)
 	level_spinbox.value_changed.connect(_on_level_changed)
 	room_code_input.text_submitted.connect(func(_text): _on_join_pressed())
-	room_code_input.gui_input.connect(_on_room_code_input_gui_input)
+	room_code_input.input_type = LineEdit.LINE_INPUT_TYPE_DEFAULT
 	reconnect_button.pressed.connect(_on_reconnect_pressed)
 	
 	for tile in player_tiles:
@@ -62,11 +62,6 @@ func _ready():
 	# Connect to server
 	Network.connect_to_server()
 	status_label.text = "Connecting to server"
-
-func _on_room_code_input_gui_input(event):
-	if event is InputEventMouseButton or event is InputEventScreenTouch:
-		if event.pressed:
-			room_code_input.grab_focus()
 
 func _on_app_resume():
 	if lost_connection:
