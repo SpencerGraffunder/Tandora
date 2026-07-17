@@ -11,6 +11,7 @@ var final_level: int = 0
 var is_dedicated_server: bool = false
 var starting_player_number: int = 0
 var starting_player_count: int = 2
+var touchscreen_enabled: bool = true
 var room_device_ids: Dictionary = {}
 
 signal player_connected(id)

@@ -14,6 +14,7 @@ const Enums = preload("res://scripts/Enums.gd")
 @onready var keyboard_spacer = $VBoxContainer/KeyboardSpacer
 @onready var room_status_label = $RoomPanel/VBoxContainer/StatusLabel
 @onready var reconnect_button = $ReconnectButton
+@onready var touchscreen_toggle = $VBoxContainer/TouchscreenToggle
 @onready var player_tiles = [
 	$RoomPanel/VBoxContainer/PlayerList/P1,
 	$RoomPanel/VBoxContainer/PlayerList/P2,
@@ -28,10 +29,13 @@ const Enums = preload("res://scripts/Enums.gd")
 var is_creator: bool = false
 var lost_connection := false
 var device_id: String = ""
+var touchscreen_enabled: bool = true
 
 func _ready():
 	if Network.is_dedicated_server:
 		return
+
+	_load_settings()
 
 	room_panel.visible = false
 	reconnect_button.visible = false
@@ -44,6 +48,7 @@ func _ready():
 	room_code_input.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_DEFAULT
 	room_code_input.focus_entered.connect(func(): DisplayServer.virtual_keyboard_show(room_code_input.text))
 	reconnect_button.pressed.connect(_on_reconnect_pressed)
+	touchscreen_toggle.toggled.connect(_on_touchscreen_toggled)
 	
 	for tile in player_tiles:
 		tile.visible = false
@@ -150,4 +155,25 @@ func _on_room_updated(player_count: int, level: int):
 
 func _on_game_starting(_player_number: int, _player_count: int, _level: int):
 	print_verbose("[CLIENT Lobby] _on_game_starting: player_number=", _player_number, " player_count=", _player_count, " level=", _level)
+	Network.touchscreen_enabled = touchscreen_enabled
 	get_tree().change_scene_to_file("res://scenes/Main.tscn")
+
+func _on_touchscreen_toggled(toggled_on: bool) -> void:
+	touchscreen_enabled = toggled_on
+	_save_settings()
+
+func _load_settings() -> void:
+	var config = ConfigFile.new()
+	var err = config.load("user://tandora.cfg")
+	if err == OK:
+		touchscreen_enabled = config.get_value("input", "touchscreen", true)
+		touchscreen_toggle.button_pressed = touchscreen_enabled
+
+func _save_settings() -> void:
+	var config = ConfigFile.new()
+	var err = config.load("user://tandora.cfg")
+	if err != OK:
+		pass  # file doesn't exist yet, that's fine
+	config.set_value("input", "touchscreen", touchscreen_enabled)
+	config.save("user://tandora.cfg")
+

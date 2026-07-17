@@ -75,6 +75,12 @@ horizontal_alignment = 1
 [node name="HSeparator" type="HSeparator" parent="VBoxContainer" unique_id=1068254904]
 layout_mode = 2
 
+[node name="TouchscreenToggle" type="CheckBox" parent="VBoxContainer" unique_id=999900001]
+layout_mode = 2
+theme_override_font_sizes/font_size = 25
+button_pressed = true
+text = "Touchscreen Controls"
+
 [node name="CreateButton" type="Button" parent="VBoxContainer" unique_id=415579194]
 layout_mode = 2
 size_flags_horizontal = 3

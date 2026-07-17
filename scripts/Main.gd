@@ -17,6 +17,7 @@ const PieceScript = preload("res://scripts/Piece.gd")
 @onready var level_label = $VBoxContainer/StatsContainer/LevelLabel
 @onready var lines_label = $VBoxContainer/StatsContainer/LinesLabel
 @onready var pause_overlay = $PauseOverlay
+@onready var player1_area = $Player1Area
 
 var local_player_number: int = 0
 var local_player_count: int = 2
@@ -60,6 +61,9 @@ func _ready():
 	$Player1Area/VBoxContainer/BottomButtonRow/DownButton.button_up.connect(func(): _on_button("DOWN", false))
 	$PauseOverlay/PausePanel/VBoxContainer/ResumeButton.pressed.connect(_on_pause_pressed)
 	$PauseOverlay/PausePanel/VBoxContainer/MainMenuButton.pressed.connect(_on_main_menu_pressed)
+	
+	# Conditionally show/hide touch buttons based on settings
+	_update_touch_buttons()
 
 func _physics_process(_delta):
 	# Check pause action
@@ -245,3 +249,8 @@ func trigger_game_over(score: int, level: int):
 func _notification(what):
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
 		get_tree().quit()
+
+func _update_touch_buttons():
+	var show = Network.touchscreen_enabled
+	# Hide/show the entire touch button area
+	player1_area.visible = show
