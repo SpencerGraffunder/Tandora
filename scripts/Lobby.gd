@@ -15,6 +15,7 @@ const Enums = preload("res://scripts/Enums.gd")
 @onready var room_status_label = $RoomPanel/VBoxContainer/StatusLabel
 @onready var reconnect_button = $ReconnectButton
 @onready var touchscreen_toggle = $VBoxContainer/TouchscreenToggle
+@onready var version_label = $VBoxContainer/VersionLabel
 @onready var player_tiles = [
 	$RoomPanel/VBoxContainer/PlayerList/P1,
 	$RoomPanel/VBoxContainer/PlayerList/P2,
@@ -36,6 +37,9 @@ func _ready():
 		return
 
 	_load_settings()
+
+	# Set version label from autoload
+	version_label.text = "v" + Version.commit
 
 	room_panel.visible = false
 	reconnect_button.visible = false

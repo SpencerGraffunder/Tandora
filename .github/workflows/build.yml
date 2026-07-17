@@ -19,6 +19,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Update version.cfg
+        run: chmod +x ./update_version.sh && ./update_version.sh
+
       - name: Install Godot ${{ env.GODOT_VERSION }}
         run: |
           GODOT_FILENAME="Godot_v${GODOT_VERSION}-stable_linux.x86_64"
@@ -56,6 +59,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Update version.cfg
+        run: chmod +x ./update_version.sh && ./update_version.sh
 
       - name: Install Godot ${{ env.GODOT_VERSION }}
         run: |

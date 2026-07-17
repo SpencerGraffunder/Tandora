@@ -26,6 +26,10 @@ font_size = 45
 font = ExtResource("1_cdhm0")
 font_size = 30
 
+[sub_resource type="LabelSettings" id="LabelSettings_version"]
+font = ExtResource("1_cdhm0")
+font_size = 18
+
 [node name="Lobby" type="Control" unique_id=2088505236]
 layout_mode = 3
 anchors_preset = 15
@@ -47,7 +51,7 @@ anchor_top = 0.4
 anchor_right = 0.5
 anchor_bottom = 0.6
 offset_left = -200.0
-offset_top = -350.0
+offset_top = -300.0
 offset_right = 200.0
 offset_bottom = 200.0
 grow_horizontal = 2
@@ -108,33 +112,38 @@ text = "Join room"
 [node name="KeyboardSpacer" type="Control" parent="VBoxContainer" unique_id=1758501667]
 layout_mode = 2
 
-[node name="StatusLabel" type="Label" parent="." unique_id=1191449780]
+[node name="ReconnectButton" type="Button" parent="VBoxContainer" unique_id=606515737]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Reconnect"
+
+[node name="HBoxContainer" type="HBoxContainer" parent="." unique_id=1339915090]
 layout_mode = 1
-anchors_preset = 7
+anchors_preset = -1
 anchor_left = 0.5
-anchor_top = 1.0
+anchor_top = 0.5
 anchor_right = 0.5
-anchor_bottom = 1.0
+anchor_bottom = 0.5
 offset_left = -200.0
-offset_top = -46.0
+offset_top = 900.0
 offset_right = 200.0
 grow_horizontal = 2
-grow_vertical = 0
+grow_vertical = 2
+accessibility_region = true
+alignment = 1
+
+[node name="StatusLabel" type="Label" parent="HBoxContainer" unique_id=1191449780]
+layout_mode = 2
+size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 30
 text = "Status"
 label_settings = SubResource("LabelSettings_cdhm0")
 
-[node name="ReconnectButton" type="Button" parent="." unique_id=606515737]
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.5
-anchor_top = 0.85
-anchor_right = 0.5
-anchor_bottom = 0.9
-grow_horizontal = 2
-grow_vertical = 0
-size_flags_horizontal = 3
-text = "Reconnect"
+[node name="VersionLabel" type="Label" parent="HBoxContainer" unique_id=854940093]
+layout_mode = 2
+text = "v67bcfed"
+label_settings = SubResource("LabelSettings_version")
+horizontal_alignment = 1
 
 [node name="RoomPanel" type="Control" parent="." unique_id=2025749376]
 visible = false
