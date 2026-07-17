@@ -41,7 +41,8 @@ func _ready():
 	leave_button.pressed.connect(_on_leave_pressed)
 	level_spinbox.value_changed.connect(_on_level_changed)
 	room_code_input.text_submitted.connect(func(_text): _on_join_pressed())
-	room_code_input.input_type = LineEdit.LINE_INPUT_TYPE_DEFAULT
+	room_code_input.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_DEFAULT
+	room_code_input.focus_entered.connect(func(): DisplayServer.virtual_keyboard_show(room_code_input.text))
 	reconnect_button.pressed.connect(_on_reconnect_pressed)
 	
 	for tile in player_tiles:
