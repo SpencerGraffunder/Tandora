@@ -165,19 +165,19 @@ func _sync_room_state(code: String) -> void:
 	var board = room.logic.state.board
 	
 	if not room.has_sent_initial_snapshot:
-		var players_data = _serialize_players(room)
-		var score_data = {
+		var players_data_compat = _serialize_players(room)
+		var score_data_compat = {
 			"score": room.logic.state.score,
 			"level": room.logic.state.current_level,
 			"lines_cleared": room.logic.lines_cleared
 		}
-		var packet = _serialize_full_snapshot(room, players_data, score_data)
+		var packet_compat = _serialize_full_snapshot(room, players_data_compat, score_data_compat)
 		# Update last_sent_board
 		for r in range(board.size()):
 			for c in range(board[r].size()):
 				room.last_sent_board[r][c] = board[r][c]
 		for peer_id in room.peers:
-			Network.rpc_sync_state.rpc_id(peer_id, packet)
+			Network.rpc_sync_state.rpc_id(peer_id, packet_compat)
 		room.has_sent_initial_snapshot = true
 		return
 
@@ -351,6 +351,11 @@ func _on_game_over(code: String) -> void:
 		print_verbose("[SERVER RoomManager] _on_game_over: Room ", code, " not found")
 		return
 	var room = rooms[code]
+	var player_numbers: Array = []
+	for i in range(room.peers.size()):
+		player_numbers.append(i)
+	var timestamp = Time.get_datetime_string_from_system(false, false)
+	Network.save_leaderboard_entry(room.peers.size(), room.logic.state.score, room.logic.state.current_level, player_numbers, "", timestamp)
 	print_verbose("[SERVER RoomManager] _on_game_over: Sending game over to ", room.peers.size(), " peers in room ", code)
 	for peer_id in room.peers:
 		print_verbose("[SERVER RoomManager] _on_game_over: Sending rpc_game_over to peer ", peer_id)

@@ -13,6 +13,8 @@ var starting_player_number: int = 0
 var starting_player_count: int = 2
 var touchscreen_enabled: bool = true
 var room_device_ids: Dictionary = {}
+var leaderboard_dir: String = "user://leaderboards"
+var leaderboard_limit: int = 25
 
 signal player_connected(id)
 signal player_disconnected(id)
@@ -24,6 +26,7 @@ signal room_updated(player_count, starting_level)
 
 func _ready():
 	_set_server_address_and_protocol()
+	DirAccess.make_dir_absolute(leaderboard_dir)
 	if DisplayServer.get_name() == "headless":
 		is_dedicated_server = true
 		start_dedicated_server()
@@ -107,6 +110,59 @@ func _on_connection_failed():
 	print_verbose("[CLIENT] Connection failed.")
 	print_verbose("[CLIENT] Multiplayer peer info:", multiplayer.multiplayer_peer)
 	connection_failed.emit()
+
+func save_leaderboard_entry(player_count: int, score: int, level: int, player_numbers: Array, username: String = "", timestamp: String = "") -> void:
+	if player_count < 1 or player_count > 8:
+		return
+	var path = "%s/%d.json" % [leaderboard_dir, player_count]
+	var entries: Array = []
+	if FileAccess.file_exists(path):
+		var file = FileAccess.open(path, FileAccess.READ)
+		if file != null:
+			var text = file.get_as_text()
+			file.close()
+			if text != "":
+				var parsed = JSON.parse_string(text)
+				if parsed is Array:
+					entries = parsed
+	var entry = {
+		"score": int(score),
+		"level": int(level),
+		"timestamp": timestamp if timestamp != "" else Time.get_datetime_string_from_system(false, false),
+		"usernames": [username] if username != "" else [],
+		"player_numbers": player_numbers
+	}
+	entries.append(entry)
+	entries.sort_custom(func(a, b):
+		return a["score"] > b["score"]
+	)
+	if entries.size() > leaderboard_limit:
+		entries.resize(leaderboard_limit)
+	var file_out = FileAccess.open(path, FileAccess.WRITE)
+	if file_out != null:
+		file_out.store_string(JSON.stringify(entries, "  "))
+		file_out.close()
+
+func get_leaderboard(player_count: int, limit: int = 5) -> Array:
+	if player_count < 1 or player_count > 8:
+		return []
+	var path = "%s/%d.json" % [leaderboard_dir, player_count]
+	if not FileAccess.file_exists(path):
+		return []
+	var file = FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return []
+	var text = file.get_as_text()
+	file.close()
+	if text == "":
+		return []
+	var parsed = JSON.parse_string(text)
+	if parsed is Array:
+		var limited: Array = []
+		for i in range(min(parsed.size(), limit)):
+			limited.append(parsed[i])
+		return limited
+	return []
 
 # ---- CLIENT -> SERVER RPCs ----
 
