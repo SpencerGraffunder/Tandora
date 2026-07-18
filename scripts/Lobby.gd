@@ -5,7 +5,7 @@ const Enums = preload("res://scripts/Enums.gd")
 @onready var room_code_input = $VBoxContainer/HBoxContainer/RoomCodeLineEdit
 @onready var create_button = $VBoxContainer/CreateButton
 @onready var join_button = $VBoxContainer/HBoxContainer/JoinButton
-@onready var status_label = $StatusLabel
+@onready var status_label = $HBoxContainer/StatusLabel
 @onready var room_panel = $RoomPanel
 @onready var code_label = $RoomPanel/VBoxContainer/CodeLabel
 @onready var level_spinbox = $RoomPanel/VBoxContainer/HBoxContainer2/StartingLevelSpinBox
@@ -13,9 +13,14 @@ const Enums = preload("res://scripts/Enums.gd")
 @onready var leave_button = $RoomPanel/VBoxContainer/HBoxContainer/LeaveButton
 @onready var keyboard_spacer = $VBoxContainer/KeyboardSpacer
 @onready var room_status_label = $RoomPanel/VBoxContainer/StatusLabel
-@onready var reconnect_button = $ReconnectButton
-@onready var touchscreen_toggle = $VBoxContainer/TouchscreenToggle
-@onready var version_label = $VBoxContainer/VersionLabel
+@onready var settings_button = $SettingsButton
+@onready var settings_panel = $SettingsPanel
+@onready var settings_close_button = $SettingsPanel/CloseButton
+@onready var how_to_play_button = $HowToPlayButton
+@onready var how_to_play_panel = $HowToPlayPanel
+@onready var how_to_play_close_button = $HowToPlayPanel/CloseButton
+@onready var touchscreen_toggle = $SettingsPanel/VBoxContainer/TouchscreenToggle
+@onready var version_label = $HBoxContainer/VersionLabel
 @onready var player_tiles = [
 	$RoomPanel/VBoxContainer/PlayerList/P1,
 	$RoomPanel/VBoxContainer/PlayerList/P2,
@@ -43,7 +48,9 @@ func _ready():
 	version_label.text = "v" + Version.commit
 
 	room_panel.visible = false
-	reconnect_button.visible = false
+	settings_panel.visible = false
+	how_to_play_panel.visible = false
+	status_label.disabled = true
 	create_button.pressed.connect(_on_create_pressed)
 	join_button.pressed.connect(_on_join_pressed)
 	start_button.pressed.connect(_on_start_pressed)
@@ -52,7 +59,11 @@ func _ready():
 	room_code_input.text_submitted.connect(func(_text): _on_join_pressed())
 	room_code_input.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_DEFAULT
 	room_code_input.focus_entered.connect(func(): DisplayServer.virtual_keyboard_show(room_code_input.text))
-	reconnect_button.pressed.connect(_on_reconnect_pressed)
+	status_label.pressed.connect(_on_reconnect_pressed)
+	settings_button.pressed.connect(_on_settings_pressed)
+	settings_close_button.pressed.connect(_close_settings_panel)
+	how_to_play_button.pressed.connect(_on_how_to_play_pressed)
+	how_to_play_close_button.pressed.connect(_close_how_to_play_panel)
 	touchscreen_toggle.toggled.connect(_on_touchscreen_toggled)
 	
 	for tile in player_tiles:
@@ -76,24 +87,27 @@ func _ready():
 
 func _on_app_resume():
 	if lost_connection:
+		status_label.disabled = true
 		Network.connect_to_server()
 		status_label.text = "Reconnecting..."
 
 func _on_connection_failed():
-	status_label.text = "Connection failed."
+	status_label.text = "Connection failed. Tap to retry"
 	lost_connection = true
-	reconnect_button.visible = true
+	status_label.disabled = false
 
 func _on_connected():
 	status_label.text = "Connected to server"
 	lost_connection = false
-	reconnect_button.visible = false
+	status_label.disabled = true
 	create_button.disabled = false
 	join_button.disabled = false
 
 func _on_reconnect_pressed():
-	Network.connect_to_server()
-	status_label.text = "Reconnecting..."
+	if lost_connection:
+		status_label.disabled = true
+		Network.connect_to_server()
+		status_label.text = "Reconnecting..."
 
 func _process(_delta):
 	if DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD):
@@ -152,6 +166,18 @@ func _on_leave_pressed():
 	print_verbose("[CLIENT Lobby] _on_leave_pressed: Leaving room")
 	_hide_room_panel()
 
+func _on_settings_pressed():
+	settings_panel.visible = true
+
+func _close_settings_panel():
+	settings_panel.visible = false
+
+func _on_how_to_play_pressed():
+	how_to_play_panel.visible = true
+
+func _close_how_to_play_panel():
+	how_to_play_panel.visible = false
+
 func _on_room_updated(player_count: int, level: int):
 	print_verbose("[CLIENT Lobby] _on_room_updated: new player_count=", player_count, " level=", level)
 	_update_player_tiles(player_count)
@@ -177,4 +203,3 @@ func _save_settings() -> void:
 		pass  # file doesn't exist yet, that's fine
 	config.set_value("input", "touchscreen", touchscreen_enabled)
 	config.save("user://tandora.cfg")
-
