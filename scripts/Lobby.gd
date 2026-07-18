@@ -37,6 +37,7 @@ func _ready():
 		return
 
 	_load_settings()
+	Network.touchscreen_enabled = touchscreen_enabled
 
 	# Set version label from autoload
 	version_label.text = "v" + Version.commit
@@ -157,13 +158,9 @@ func _on_room_updated(player_count: int, level: int):
 	room_status_label.text = "Players: " + str(player_count)
 	level_spinbox.value = level
 
-func _on_game_starting(_player_number: int, _player_count: int, _level: int):
-	print_verbose("[CLIENT Lobby] _on_game_starting: player_number=", _player_number, " player_count=", _player_count, " level=", _level)
-	Network.touchscreen_enabled = touchscreen_enabled
-	get_tree().change_scene_to_file("res://scenes/Main.tscn")
-
 func _on_touchscreen_toggled(toggled_on: bool) -> void:
 	touchscreen_enabled = toggled_on
+	Network.touchscreen_enabled = toggled_on
 	_save_settings()
 
 func _load_settings() -> void:

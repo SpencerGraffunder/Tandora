@@ -85,6 +85,10 @@ jobs:
           mkdir -p build_web
           godot --headless --export-release "${{ env.EXPORT_PRESET_WEB }}" "build_web/index.html"
 
+      - name: Inject cache-busting meta tag
+        run: |
+          sed -i 's|<head>|<head>\n  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">\n  <meta http-equiv="Pragma" content="no-cache">\n  <meta http-equiv="Expires" content="0">|' build_web/index.html
+
       - name: Deploy to GitHub Pages repo
         if: github.ref == 'refs/heads/master'
         run: |
