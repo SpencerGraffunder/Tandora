@@ -234,6 +234,16 @@ layout_mode = 2
 text = "Status"
 label_settings = SubResource("LabelSettings_cdhm0")
 
+[node name="LeaderboardLabel" type="Label" parent="RoomPanel/VBoxContainer" unique_id=532142600]
+layout_mode = 2
+text = "Top 5 Leaderboard"
+horizontal_alignment = 1
+label_settings = SubResource("LabelSettings_cdhm0")
+
+[node name="LeaderboardContainer" type="VBoxContainer" parent="RoomPanel/VBoxContainer" unique_id=420482042]
+layout_mode = 2
+alignment = 1
+
 [node name="PlayerList" type="HBoxContainer" parent="RoomPanel/VBoxContainer" unique_id=1199364039]
 layout_mode = 2
 size_flags_vertical = 3

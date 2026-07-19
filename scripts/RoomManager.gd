@@ -266,6 +266,9 @@ func _serialize_players(room) -> Array:
 # [lines_cleared]           4 bytes int32
 # [player_count]            1 byte
 # [per player: see _write_player_to_buffer]
+# [clearing_line_count]     1 byte
+# [per line: board_index, counter]
+# [game_over_progress]      1 byte (0..255, based on the existing die-counter delay)
 # [cell_count]              2 bytes uint16 — number of non-BLANK cells
 # [per cell: uint16]        2 bytes each, see _pack_cell
 func _serialize_full_snapshot(room, players_data: Array, score_data: Dictionary) -> PackedByteArray:
@@ -277,6 +280,8 @@ func _serialize_full_snapshot(room, players_data: Array, score_data: Dictionary)
 	buf.put_u8(players_data.size())
 	for pd in players_data:
 		_write_player_to_buffer(buf, pd)
+	_write_clearing_lines_to_buffer(buf, room)
+	buf.put_u8(_encode_game_over_progress(room))
 
 	# Write all non-BLANK cells
 	var board = room.logic.state.board
@@ -299,6 +304,9 @@ func _serialize_full_snapshot(room, players_data: Array, score_data: Dictionary)
 # [lines_cleared]           4 bytes int32
 # [player_count]            1 byte
 # [per player: see _write_player_to_buffer]
+# [clearing_line_count]     1 byte
+# [per line: board_index, counter]
+# [game_over_progress]      1 byte (0..255, based on the existing die-counter delay)
 # [cell_count]              2 bytes uint16 — number of changed cells
 # [per cell: uint16]        2 bytes each, see _pack_cell
 func _serialize_delta(room, changed_cells: Array, players_data: Array, score_data: Dictionary) -> PackedByteArray:
@@ -311,6 +319,8 @@ func _serialize_delta(room, changed_cells: Array, players_data: Array, score_dat
 	buf.put_u8(players_data.size())
 	for pd in players_data:
 		_write_player_to_buffer(buf, pd)
+	_write_clearing_lines_to_buffer(buf, room)
+	buf.put_u8(_encode_game_over_progress(room))
 	buf.put_u16(changed_cells.size())
 	for cell in changed_cells:
 		buf.put_u16(_pack_cell(cell[0], cell[1], cell[2]))
@@ -338,6 +348,21 @@ func _write_player_to_buffer(buf: StreamPeerBuffer, pd: Dictionary) -> void:
 	for loc in pd.next_locs:
 		buf.put_u8(loc[0])  # col
 		buf.put_u8(loc[1])  # row
+
+func _write_clearing_lines_to_buffer(buf: StreamPeerBuffer, room) -> void:
+	var clearing_lines = room.logic.clearing_lines
+	buf.put_u8(clearing_lines.size())
+	for line in clearing_lines:
+		buf.put_u8(line.board_index)
+		buf.put_u8(line.counter)
+
+func _encode_game_over_progress(room) -> int:
+	if room.logic == null:
+		return 0
+	var ratio = clampf(float(room.logic.die_counter) / 120.0, 0.0, 1.0)
+	if ratio >= 1.0:
+		return 255
+	return int(floor(ratio * 255.0))
 
 # Cell packing: 16 bits
 # [row: 5 bits][col: 6 bits][value+1: 4 bits][unused: 1 bit]

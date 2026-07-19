@@ -13,6 +13,8 @@ const Enums = preload("res://scripts/Enums.gd")
 @onready var leave_button = $RoomPanel/VBoxContainer/HBoxContainer/LeaveButton
 @onready var keyboard_spacer = $VBoxContainer/KeyboardSpacer
 @onready var room_status_label = $RoomPanel/VBoxContainer/StatusLabel
+@onready var room_leaderboard_label = $RoomPanel/VBoxContainer/LeaderboardLabel
+@onready var room_leaderboard_container = $RoomPanel/VBoxContainer/LeaderboardContainer
 @onready var settings_button = $SettingsButton
 @onready var settings_panel = $SettingsPanel
 @onready var settings_close_button = $SettingsPanel/CloseButton
@@ -117,6 +119,34 @@ func _process(_delta):
 func _update_player_tiles(count: int) -> void:
 	for i in range(player_tiles.size()):
 		player_tiles[i].visible = i < count
+	_update_room_leaderboard(count)
+
+func _update_room_leaderboard(player_count: int) -> void:
+	for child in room_leaderboard_container.get_children():
+		child.queue_free()
+	var entries = Network.get_leaderboard(max(1, min(8, player_count)), 5)
+	if entries.is_empty():
+		var empty_label = Label.new()
+		empty_label.text = "No scores yet"
+		room_leaderboard_container.add_child(empty_label)
+		return
+	for i in range(entries.size()):
+		var entry = entries[i]
+		var row = HBoxContainer.new()
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		var rank_label = Label.new()
+		rank_label.text = str(i + 1) + "."
+		rank_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var score_label = Label.new()
+		score_label.text = str(int(entry.get("score", 0)))
+		score_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var players_label = Label.new()
+		players_label.text = str(entry.get("player_numbers", []))
+		players_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(rank_label)
+		row.add_child(score_label)
+		row.add_child(players_label)
+		room_leaderboard_container.add_child(row)
 
 func _on_create_pressed():
 	is_creator = true
@@ -140,6 +170,7 @@ func _show_room_panel():
 	join_button.visible = false
 	room_code_input.visible = false
 	room_status_label.visible = false
+	_update_room_leaderboard(max(1, min(8, room_status_label.text.to_int() if room_status_label.text.is_valid_int() else 1)))
 
 func _hide_room_panel():
 	room_panel.visible = false
@@ -161,6 +192,7 @@ func _on_room_joined(player_count: int, code: String):
 	start_button.visible = false
 	_show_room_panel()
 	room_status_label.text = "Players: " + str(player_count)
+	_update_room_leaderboard(player_count)
 
 func _on_leave_pressed():
 	print_verbose("[CLIENT Lobby] _on_leave_pressed: Leaving room")
@@ -183,6 +215,7 @@ func _on_room_updated(player_count: int, level: int):
 	_update_player_tiles(player_count)
 	room_status_label.text = "Players: " + str(player_count)
 	level_spinbox.value = level
+	_update_room_leaderboard(player_count)
 
 func _on_touchscreen_toggled(toggled_on: bool) -> void:
 	touchscreen_enabled = toggled_on

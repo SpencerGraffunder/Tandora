@@ -30,6 +30,8 @@ var prev_move_down: bool = false
 
 var _last_received_seq: int = -1
 var _waiting_for_full_sync: bool = false
+var game_over_animation_active: bool = false
+
 
 func _ready():
 	local_player_number = Network.starting_player_number
@@ -150,6 +152,23 @@ func _apply_full_snapshot(buf: StreamPeerBuffer) -> void:
 	for i in range(player_count):
 		players_state.append(_read_player_from_buffer(buf))
 
+	var clearing_line_count = buf.get_u8()
+	var clearing_rows = []
+	for i in range(clearing_line_count):
+		clearing_rows.append({
+			"board_index": buf.get_u8(),
+			"counter": buf.get_u8()
+		})
+
+	var game_over_progress_value = buf.get_u8()
+	var game_over_progress = clampf(float(game_over_progress_value) / 255.0, 0.0, 1.0)
+	if game_over_progress >= 1.0:
+		game_over_animation_active = false
+		game_board.set_game_over_animation_progress(1.0)
+	else:
+		game_over_animation_active = true
+		game_board.set_game_over_animation_progress(game_over_progress)
+
 	var cell_count = buf.get_u16()
 	# Full snapshot: reset board to all BLANK first, then apply cells
 	game_board.reset_board_to_blank()
@@ -160,6 +179,7 @@ func _apply_full_snapshot(buf: StreamPeerBuffer) -> void:
 		var value = ((packed >> 1) & 0xF) - 1  # decode: subtract 1, BLANK = -1
 		game_board.set_cell(row, col, value)
 
+	game_board.set_clearing_rows(clearing_rows)
 	_apply_players_state(players_state)
 
 func _apply_delta(buf: StreamPeerBuffer) -> void:
@@ -175,6 +195,23 @@ func _apply_delta(buf: StreamPeerBuffer) -> void:
 	for i in range(player_count):
 		players_state.append(_read_player_from_buffer(buf))
 
+	var clearing_line_count = buf.get_u8()
+	var clearing_rows = []
+	for i in range(clearing_line_count):
+		clearing_rows.append({
+			"board_index": buf.get_u8(),
+			"counter": buf.get_u8()
+		})
+
+	var game_over_progress_value = buf.get_u8()
+	var game_over_progress = clampf(float(game_over_progress_value) / 255.0, 0.0, 1.0)
+	if game_over_progress >= 1.0:
+		game_over_animation_active = false
+		game_board.set_game_over_animation_progress(1.0)
+	else:
+		game_over_animation_active = true
+		game_board.set_game_over_animation_progress(game_over_progress)
+
 	var cell_count = buf.get_u16()
 	for i in range(cell_count):
 		var packed = buf.get_u16()
@@ -183,6 +220,7 @@ func _apply_delta(buf: StreamPeerBuffer) -> void:
 		var value = ((packed >> 1) & 0xF) - 1  # decode: subtract 1, BLANK = -1
 		game_board.set_cell(row, col, value)
 
+	game_board.set_clearing_rows(clearing_rows)
 	_apply_players_state(players_state)
 
 func _read_player_from_buffer(buf: StreamPeerBuffer) -> Dictionary:
@@ -241,9 +279,11 @@ func _on_main_menu_pressed():
 
 @rpc("authority", "call_local", "reliable")
 func trigger_game_over(score: int, level: int):
-	print_verbose("[CLIENT Main] trigger_game_over: score=", score, " level=", level, " - changing to GameOver scene")
+	print_verbose("[CLIENT Main] trigger_game_over: score=", score, " level=", level, " - finishing game-over animation")
 	Network.final_score = score
 	Network.final_level = level
+	game_over_animation_active = false
+	game_board.set_game_over_animation_progress(1.0)
 	get_tree().change_scene_to_file("res://scenes/GameOver.tscn")
 
 func _notification(what):
@@ -251,6 +291,6 @@ func _notification(what):
 		get_tree().quit()
 
 func _update_touch_buttons():
-	var show = Network.touchscreen_enabled
+	var show_touch_buttons = Network.touchscreen_enabled
 	# Hide/show the entire touch button area
-	player1_area.visible = show
+	player1_area.visible = show_touch_buttons
