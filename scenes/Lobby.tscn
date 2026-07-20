@@ -80,6 +80,8 @@ alignment = 1
 
 [node name="Icon" type="TextureRect" parent="VBoxContainer" unique_id=187342567]
 layout_mode = 2
+offset_transform_enabled = true
+offset_transform_position = Vector2(0, 30)
 texture = ExtResource("4_h77bf")
 expand_mode = 5
 

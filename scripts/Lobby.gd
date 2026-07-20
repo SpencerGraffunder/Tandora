@@ -34,6 +34,10 @@ const Enums = preload("res://scripts/Enums.gd")
 	$RoomPanel/VBoxContainer/PlayerList/P8
 ]
 
+@onready var _main_vbox = $VBoxContainer
+var _original_vbox_offset_top: float
+var _original_vbox_offset_bottom: float
+
 var is_creator: bool = false
 var lost_connection := false
 var device_id: String = ""
@@ -80,6 +84,10 @@ func _ready():
 
 	# Cache device ID (cast as Node since compiler doesn't recognize autoload)
 	device_id = get_node("/root/DeviceID").get_device_id()
+	
+	# Save original VBoxContainer offsets for keyboard spacer adjustment
+	_original_vbox_offset_top = _main_vbox.offset_top
+	_original_vbox_offset_bottom = _main_vbox.offset_bottom
 
 	# Listen for app focus (resume) events
 	get_window().connect("focus_entered", Callable(self, "_on_app_resume"))
@@ -114,8 +122,11 @@ func _on_reconnect_pressed():
 
 func _process(_delta):
 	if DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD):
-		var keyboard_height = DisplayServer.virtual_keyboard_get_height()/2.0
-		keyboard_spacer.custom_minimum_size.y = keyboard_height
+		var keyboard_height = DisplayServer.virtual_keyboard_get_height()
+		# Shift the entire VBoxContainer up by the keyboard height so the
+		# input field stays visible above the on-screen keyboard.
+		_main_vbox.offset_top = _original_vbox_offset_top - keyboard_height
+		_main_vbox.offset_bottom = _original_vbox_offset_bottom - keyboard_height
 
 func _update_player_tiles(count: int) -> void:
 	for i in range(player_tiles.size()):
