@@ -40,6 +40,7 @@ script = ExtResource("1_6jt0u")
 layout_mode = 1
 
 [node name="SettingsButton" type="Button" parent="." unique_id=148643]
+visible = false
 layout_mode = 1
 anchors_preset = 1
 anchor_left = 1.0
@@ -53,6 +54,7 @@ theme_override_font_sizes/font_size = 24
 text = "⚙"
 
 [node name="HowToPlayButton" type="Button" parent="." unique_id=1178057476]
+visible = false
 layout_mode = 1
 offset_left = 60.0
 offset_top = 40.0
