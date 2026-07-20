@@ -159,7 +159,6 @@ text = "v67bcfed"
 horizontal_alignment = 1
 
 [node name="RoomPanel" type="Control" parent="." unique_id=2025749376]
-visible = false
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -178,9 +177,9 @@ anchor_top = 0.4
 anchor_right = 0.5
 anchor_bottom = 0.6
 offset_left = -200.0
-offset_top = -120.0
+offset_top = -320.0
 offset_right = 200.0
-offset_bottom = 140.0
+offset_bottom = -60.0
 grow_horizontal = 2
 grow_vertical = 2
 alignment = 1
@@ -233,16 +232,6 @@ text = "Start"
 layout_mode = 2
 text = "Status"
 label_settings = SubResource("LabelSettings_cdhm0")
-
-[node name="LeaderboardLabel" type="Label" parent="RoomPanel/VBoxContainer" unique_id=532142600]
-layout_mode = 2
-text = "Top 5 Leaderboard"
-horizontal_alignment = 1
-label_settings = SubResource("LabelSettings_cdhm0")
-
-[node name="LeaderboardContainer" type="VBoxContainer" parent="RoomPanel/VBoxContainer" unique_id=420482042]
-layout_mode = 2
-alignment = 1
 
 [node name="PlayerList" type="HBoxContainer" parent="RoomPanel/VBoxContainer" unique_id=1199364039]
 layout_mode = 2
@@ -311,6 +300,30 @@ layout_mode = 2
 size_flags_horizontal = 3
 texture_normal = ExtResource("12_yy2xu")
 stretch_mode = 5
+
+[node name="LeaderboardVBox" type="VBoxContainer" parent="RoomPanel" unique_id=1767901776]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = 60.0
+offset_right = 200.0
+offset_bottom = 400.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="LeaderboardLabel" type="Label" parent="RoomPanel/LeaderboardVBox" unique_id=532142600]
+layout_mode = 2
+text = "Top 5 Leaderboard"
+label_settings = SubResource("LabelSettings_cdhm0")
+horizontal_alignment = 1
+
+[node name="LeaderboardContainer" type="VBoxContainer" parent="RoomPanel/LeaderboardVBox" unique_id=420482042]
+layout_mode = 2
+alignment = 1
 
 [node name="SettingsPanel" type="Control" parent="." unique_id=2025749377]
 visible = false
