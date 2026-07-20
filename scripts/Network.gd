@@ -16,6 +16,7 @@ var room_device_ids: Dictionary = {}
 var leaderboard_dir: String = "user://leaderboards"
 var leaderboard_limit: int = 25
 var leaderboard_base_path: String = ""
+var leaderboard_cache: Dictionary = {}
 
 signal player_connected(id)
 signal player_disconnected(id)
@@ -24,6 +25,7 @@ signal connection_succeeded
 signal room_created(code)
 signal room_joined(player_count, code)
 signal room_updated(player_count, starting_level)
+signal leaderboard_updated(player_count, entries)
 
 func _ready():
 	_set_server_address_and_protocol()
@@ -31,7 +33,9 @@ func _ready():
 	var resolved_leaderboard_dir = ProjectSettings.globalize_path(leaderboard_dir)
 	print("[SERVER/CLIENT] Leaderboard base path: ", leaderboard_base_path)
 	print("[SERVER/CLIENT] Leaderboard dir: ", resolved_leaderboard_dir)
-	DirAccess.make_dir_absolute(leaderboard_dir)
+	var dir_err = DirAccess.make_dir_absolute(leaderboard_dir)
+	if dir_err != OK:
+		printerr("[SERVER/CLIENT] Failed to create leaderboard directory: error code ", dir_err)
 	if DisplayServer.get_name() == "headless":
 		is_dedicated_server = true
 		start_dedicated_server()
@@ -116,6 +120,37 @@ func _on_connection_failed():
 	print_verbose("[CLIENT] Multiplayer peer info:", multiplayer.multiplayer_peer)
 	connection_failed.emit()
 
+func _limit_entries(entries: Array, limit: int) -> Array:
+	var limited: Array = []
+	for i in range(min(entries.size(), limit)):
+		limited.append(entries[i])
+	return limited
+
+func _load_leaderboard_from_disk(player_count: int, limit: int = 5) -> Array:
+	if player_count < 1 or player_count > 8:
+		return []
+	var path = "%s/%d.json" % [leaderboard_dir, player_count]
+	var absolute_path = ProjectSettings.globalize_path(path)
+	print("[SERVER/CLIENT] Loading leaderboard from ", absolute_path, " (player_count=", player_count, ")")
+	if not FileAccess.file_exists(path):
+		print("[SERVER/CLIENT] Leaderboard file not found at ", absolute_path)
+		return []
+	var file = FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		printerr("[SERVER/CLIENT] Failed to open leaderboard file at ", absolute_path)
+		return []
+	var text = file.get_as_text()
+	file.close()
+	if text == "":
+		print("[SERVER/CLIENT] Leaderboard file exists but is empty: ", absolute_path)
+		return []
+	var parsed = JSON.parse_string(text)
+	if parsed is Array:
+		print("[SERVER/CLIENT] Loaded leaderboard entries from ", absolute_path)
+		return _limit_entries(parsed, limit)
+	printerr("[SERVER/CLIENT] Leaderboard JSON was not an array: ", absolute_path)
+	return []
+
 func save_leaderboard_entry(player_count: int, score: int, level: int, player_numbers: Array, username: String = "", timestamp: String = "") -> void:
 	if player_count < 1 or player_count > 8:
 		return
@@ -148,37 +183,53 @@ func save_leaderboard_entry(player_count: int, score: int, level: int, player_nu
 	if file_out != null:
 		file_out.store_string(JSON.stringify(entries, "  "))
 		file_out.close()
+		leaderboard_cache[player_count] = entries
 		print("[SERVER/CLIENT] Saved leaderboard entry to ", absolute_path, " (player_count=", player_count, ", score=", score, ")")
+		if is_dedicated_server:
+			for peer_id in players.keys():
+				rpc_leaderboard_response.rpc_id(peer_id, player_count, entries)
+			leaderboard_updated.emit(player_count, entries)
 	else:
 		printerr("[SERVER/CLIENT] Failed to write leaderboard file at ", absolute_path)
 
 func get_leaderboard(player_count: int, limit: int = 5) -> Array:
 	if player_count < 1 or player_count > 8:
 		return []
-	var path = "%s/%d.json" % [leaderboard_dir, player_count]
-	var absolute_path = ProjectSettings.globalize_path(path)
-	print("[SERVER/CLIENT] Loading leaderboard from ", absolute_path, " (player_count=", player_count, ")")
-	if not FileAccess.file_exists(path):
-		print("[SERVER/CLIENT] Leaderboard file not found at ", absolute_path)
-		return []
-	var file = FileAccess.open(path, FileAccess.READ)
-	if file == null:
-		printerr("[SERVER/CLIENT] Failed to open leaderboard file at ", absolute_path)
-		return []
-	var text = file.get_as_text()
-	file.close()
-	if text == "":
-		print("[SERVER/CLIENT] Leaderboard file exists but is empty: ", absolute_path)
-		return []
-	var parsed = JSON.parse_string(text)
-	if parsed is Array:
-		var limited: Array = []
-		for i in range(min(parsed.size(), limit)):
-			limited.append(parsed[i])
-		print("[SERVER/CLIENT] Loaded ", limited.size(), " leaderboard entries from ", absolute_path)
-		return limited
-	printerr("[SERVER/CLIENT] Leaderboard JSON was not an array: ", absolute_path)
-	return []
+	if leaderboard_cache.has(player_count):
+		return _limit_entries(leaderboard_cache[player_count], limit)
+	return _load_leaderboard_from_disk(player_count, limit)
+
+func request_leaderboard(player_count: int, limit: int = 5) -> void:
+	if is_dedicated_server:
+		var entries = _load_leaderboard_from_disk(player_count, limit)
+		leaderboard_cache[player_count] = entries
+		leaderboard_updated.emit(player_count, entries)
+		return
+	if multiplayer.multiplayer_peer == null:
+		var entries = _load_leaderboard_from_disk(player_count, limit)
+		leaderboard_cache[player_count] = entries
+		leaderboard_updated.emit(player_count, entries)
+		return
+	if multiplayer.is_server():
+		var entries = _load_leaderboard_from_disk(player_count, limit)
+		leaderboard_cache[player_count] = entries
+		leaderboard_updated.emit(player_count, entries)
+		return
+	rpc_request_leaderboard.rpc_id(1, player_count, limit)
+
+@rpc("any_peer", "call_remote", "reliable")
+func rpc_request_leaderboard(player_count: int, limit: int):
+	if not is_dedicated_server:
+		return
+	var sender = multiplayer.get_remote_sender_id()
+	var entries = _load_leaderboard_from_disk(player_count, limit)
+	leaderboard_cache[player_count] = entries
+	rpc_leaderboard_response.rpc_id(sender, player_count, entries)
+
+@rpc("authority", "call_remote", "reliable")
+func rpc_leaderboard_response(player_count: int, entries: Array):
+	leaderboard_cache[player_count] = entries
+	leaderboard_updated.emit(player_count, entries)
 
 # ---- CLIENT -> SERVER RPCs ----
 

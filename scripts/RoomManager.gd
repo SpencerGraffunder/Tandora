@@ -17,6 +17,7 @@ class Room:
 	var started: bool = false
 	var creator: int = 0
 	var starting_level: int = 0
+	var starting_player_count: int = 0
 	var idle_timer: float = 0.0
 	var last_sent_board: Array = []   # flat copy of board after last send
 	var last_sent_seq: int = 0        # sequence number of last sent delta packet
@@ -122,6 +123,7 @@ func start_room(code: String) -> bool:
 		return false
 	room.logic = GameLogicScript.new()
 	room.logic.reset(room.peers.size(), room.starting_level)
+	room.starting_player_count = room.peers.size()
 	room.logic.game_over_triggered.connect(func(): _on_game_over(code))
 	room.started = true
 	# Initialize last_sent_board to all BLANK so first tick diffs as fully changed
@@ -380,7 +382,7 @@ func _on_game_over(code: String) -> void:
 	for i in range(room.peers.size()):
 		player_numbers.append(i)
 	var timestamp = Time.get_datetime_string_from_system(false, false)
-	Network.save_leaderboard_entry(room.peers.size(), room.logic.state.score, room.logic.state.current_level, player_numbers, "", timestamp)
+	Network.save_leaderboard_entry(room.starting_player_count, room.logic.state.score, room.logic.state.current_level, player_numbers, "", timestamp)
 	print_verbose("[SERVER RoomManager] _on_game_over: Sending game over to ", room.peers.size(), " peers in room ", code)
 	for peer_id in room.peers:
 		print_verbose("[SERVER RoomManager] _on_game_over: Sending rpc_game_over to peer ", peer_id)

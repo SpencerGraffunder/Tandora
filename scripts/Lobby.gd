@@ -76,6 +76,7 @@ func _ready():
 	Network.room_created.connect(_on_room_created)
 	Network.room_joined.connect(_on_room_joined)
 	Network.room_updated.connect(_on_room_updated)
+	Network.leaderboard_updated.connect(_on_leaderboard_updated)
 
 	# Cache device ID (cast as Node since compiler doesn't recognize autoload)
 	device_id = get_node("/root/DeviceID").get_device_id()
@@ -122,9 +123,17 @@ func _update_player_tiles(count: int) -> void:
 	_update_room_leaderboard(count)
 
 func _update_room_leaderboard(player_count: int) -> void:
+	var resolved_count = max(1, min(8, player_count))
+	var entries = Network.get_leaderboard(resolved_count, 5)
+	_populate_leaderboard_rows(entries)
+	Network.request_leaderboard(resolved_count, 5)
+
+func _on_leaderboard_updated(_player_count: int, entries: Array) -> void:
+	_populate_leaderboard_rows(entries)
+
+func _populate_leaderboard_rows(entries: Array) -> void:
 	for child in room_leaderboard_container.get_children():
 		child.queue_free()
-	var entries = Network.get_leaderboard(max(1, min(8, player_count)), 5)
 	if entries.is_empty():
 		var empty_label = Label.new()
 		empty_label.text = "No scores yet"
