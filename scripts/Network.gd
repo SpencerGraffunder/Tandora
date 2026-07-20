@@ -15,6 +15,7 @@ var touchscreen_enabled: bool = true
 var room_device_ids: Dictionary = {}
 var leaderboard_dir: String = "user://leaderboards"
 var leaderboard_limit: int = 25
+var leaderboard_base_path: String = ""
 
 signal player_connected(id)
 signal player_disconnected(id)
@@ -26,6 +27,10 @@ signal room_updated(player_count, starting_level)
 
 func _ready():
 	_set_server_address_and_protocol()
+	leaderboard_base_path = ProjectSettings.globalize_path("user://")
+	var resolved_leaderboard_dir = ProjectSettings.globalize_path(leaderboard_dir)
+	print("[SERVER/CLIENT] Leaderboard base path: ", leaderboard_base_path)
+	print("[SERVER/CLIENT] Leaderboard dir: ", resolved_leaderboard_dir)
 	DirAccess.make_dir_absolute(leaderboard_dir)
 	if DisplayServer.get_name() == "headless":
 		is_dedicated_server = true
@@ -115,6 +120,7 @@ func save_leaderboard_entry(player_count: int, score: int, level: int, player_nu
 	if player_count < 1 or player_count > 8:
 		return
 	var path = "%s/%d.json" % [leaderboard_dir, player_count]
+	var absolute_path = ProjectSettings.globalize_path(path)
 	var entries: Array = []
 	if FileAccess.file_exists(path):
 		var file = FileAccess.open(path, FileAccess.READ)
@@ -142,26 +148,36 @@ func save_leaderboard_entry(player_count: int, score: int, level: int, player_nu
 	if file_out != null:
 		file_out.store_string(JSON.stringify(entries, "  "))
 		file_out.close()
+		print("[SERVER/CLIENT] Saved leaderboard entry to ", absolute_path, " (player_count=", player_count, ", score=", score, ")")
+	else:
+		printerr("[SERVER/CLIENT] Failed to write leaderboard file at ", absolute_path)
 
 func get_leaderboard(player_count: int, limit: int = 5) -> Array:
 	if player_count < 1 or player_count > 8:
 		return []
 	var path = "%s/%d.json" % [leaderboard_dir, player_count]
+	var absolute_path = ProjectSettings.globalize_path(path)
+	print("[SERVER/CLIENT] Loading leaderboard from ", absolute_path, " (player_count=", player_count, ")")
 	if not FileAccess.file_exists(path):
+		print("[SERVER/CLIENT] Leaderboard file not found at ", absolute_path)
 		return []
 	var file = FileAccess.open(path, FileAccess.READ)
 	if file == null:
+		printerr("[SERVER/CLIENT] Failed to open leaderboard file at ", absolute_path)
 		return []
 	var text = file.get_as_text()
 	file.close()
 	if text == "":
+		print("[SERVER/CLIENT] Leaderboard file exists but is empty: ", absolute_path)
 		return []
 	var parsed = JSON.parse_string(text)
 	if parsed is Array:
 		var limited: Array = []
 		for i in range(min(parsed.size(), limit)):
 			limited.append(parsed[i])
+		print("[SERVER/CLIENT] Loaded ", limited.size(), " leaderboard entries from ", absolute_path)
 		return limited
+	printerr("[SERVER/CLIENT] Leaderboard JSON was not an array: ", absolute_path)
 	return []
 
 # ---- CLIENT -> SERVER RPCs ----

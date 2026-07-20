@@ -205,13 +205,28 @@ layout_mode = 2
 
 [node name="StartingLevelLabel" type="Label" parent="RoomPanel/VBoxContainer/HBoxContainer2" unique_id=1030735380]
 layout_mode = 2
+size_flags_horizontal = 3
 text = "Starting Level"
 label_settings = SubResource("LabelSettings_cdhm0")
 
 [node name="StartingLevelSpinBox" type="SpinBox" parent="RoomPanel/VBoxContainer/HBoxContainer2" unique_id=839923690]
 layout_mode = 2
-size_flags_horizontal = 3
 max_value = 19.0
+alignment = 1
+editable = false
+
+[node name="HBoxContainer3" type="HBoxContainer" parent="RoomPanel/VBoxContainer" unique_id=438782419]
+layout_mode = 2
+
+[node name="LocalPlayersLabel" type="Label" parent="RoomPanel/VBoxContainer/HBoxContainer3" unique_id=677091239]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Local Players"
+label_settings = SubResource("LabelSettings_cdhm0")
+
+[node name="LocalPlayersSpinBox" type="SpinBox" parent="RoomPanel/VBoxContainer/HBoxContainer3" unique_id=2068432684]
+layout_mode = 2
+max_value = 4.0
 alignment = 1
 editable = false
 
