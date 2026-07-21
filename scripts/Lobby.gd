@@ -39,6 +39,10 @@ var lost_connection := false
 var device_id: String = ""
 var touchscreen_enabled: bool = true
 
+@onready var _main_vbox = $VBoxContainer
+var _vbox_offset_top: float
+var _vbox_offset_bottom: float
+
 func _ready():
 	if Network.is_dedicated_server:
 		return
@@ -48,15 +52,6 @@ func _ready():
 
 	# Set version label from autoload
 	version_label.text = "v" + Version.commit
-	
-	# Initialize keyboard tracking on web platform.
-	# Stores the full (keyboard-free) viewport height so we can detect
-	# when the on-screen keyboard shrinks the visible area.
-	if OS.has_feature("web"):
-		JavaScriptBridge.eval(
-			'window.__tandoraFullHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight',
-			true
-		)
 
 	room_panel.visible = false
 	settings_panel.visible = false
@@ -70,6 +65,13 @@ func _ready():
 	room_code_input.text_submitted.connect(func(_text): _on_join_pressed())
 	room_code_input.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_DEFAULT
 	room_code_input.focus_entered.connect(func(): DisplayServer.virtual_keyboard_show(room_code_input.text))
+	# On mobile web the virtual keyboard covers the input field.
+	# Shift the VBoxContainer up when the input gets focus so the
+	# user can see what they're typing, and restore when focus is lost.
+	_vbox_offset_top = _main_vbox.offset_top
+	_vbox_offset_bottom = _main_vbox.offset_bottom
+	room_code_input.focus_entered.connect(_on_room_code_focus_gained)
+	room_code_input.focus_exited.connect(_on_room_code_focus_lost)
 	status_label.pressed.connect(_on_reconnect_pressed)
 	settings_button.pressed.connect(_on_settings_pressed)
 	settings_close_button.pressed.connect(_close_settings_panel)
@@ -122,55 +124,26 @@ func _on_reconnect_pressed():
 		status_label.text = "Reconnecting..."
 
 func _process(_delta):
-	# Use JavaScript bridge on web — more reliable than DisplayServer's
-	# virtual_keyboard_get_height() which depends on the experimental
-	# VirtualKeyboard browser API (not supported everywhere).
-	var keyboard_css: float = 0.0
+	if DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD):
+		var keyboard_height = DisplayServer.virtual_keyboard_get_height()/2.0
+		keyboard_spacer.custom_minimum_size.y = keyboard_height
+
+
+# When the room-code input is focused on mobile web the virtual keyboard
+# appears and covers the bottom half of the screen. Shift the whole
+# VBoxContainer up so the input stays visible, then restore it on blur.
+const KEYBOARD_PUSH_Y: float = 350.0
+
+func _on_room_code_focus_gained() -> void:
 	if OS.has_feature("web"):
-		keyboard_css = _get_keyboard_height_js()
-	else:
-		if DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD):
-			keyboard_css = float(DisplayServer.virtual_keyboard_get_height())
-	
-	if keyboard_css <= 0:
-		keyboard_spacer.custom_minimum_size.y = 0.0
-		return
-	
-	# Convert from CSS pixels to game coordinates.
-	# Use the canvas transform scale — more reliable than window size
-	# since the viewport may have been resized by the keyboard.
-	var canvas_scale = get_viewport().get_canvas_transform().get_scale().y
-	if canvas_scale > 0:
-		var keyboard_game = keyboard_css / canvas_scale
-		# VBoxContainer has CENTER alignment, so content shifts by spacer/2.
-		# Double the spacer height so the input field clears the keyboard.
-		keyboard_spacer.custom_minimum_size.y = keyboard_game * 2.0
+		_main_vbox.offset_top = _vbox_offset_top - KEYBOARD_PUSH_Y
+		# Keep the same container height so the layout doesn't reflow.
+		_main_vbox.offset_bottom = _vbox_offset_bottom - KEYBOARD_PUSH_Y
 
-
-# Detects the on-screen keyboard height on mobile web using the most
-# accurate available browser API, falling back to visualViewport comparison.
-func _get_keyboard_height_js() -> float:
-	# Method 1: navigator.virtualKeyboard — most accurate, but only available
-	# when html/experimental_virtual_keyboard=true and the browser supports it.
-	var js = JavaScriptBridge.eval(
-		'navigator.virtualKeyboard ? navigator.virtualKeyboard.boundingRect.height : -1',
-		true
-	)
-	if js != null:
-		var nvk: float = float(js)
-		if nvk > 0:
-			return nvk
-	
-	# Method 2: visualViewport comparison — works on most mobile browsers
-	# when the keyboard resizes the viewport (default behaviour without
-	# overlaysContent / experimental_virtual_keyboard).
-	js = JavaScriptBridge.eval(
-		'(window.visualViewport && window.__tandoraFullHeight) ? Math.max(0, window.__tandoraFullHeight - window.visualViewport.height) : 0',
-		true
-	)
-	if js != null:
-		return float(js)
-	return 0.0
+func _on_room_code_focus_lost() -> void:
+	if OS.has_feature("web"):
+		_main_vbox.offset_top = _vbox_offset_top
+		_main_vbox.offset_bottom = _vbox_offset_bottom
 
 func _update_player_tiles(count: int) -> void:
 	for i in range(player_tiles.size()):
