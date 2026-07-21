@@ -48,6 +48,15 @@ func _ready():
 
 	# Set version label from autoload
 	version_label.text = "v" + Version.commit
+	
+	# Initialize keyboard tracking on web platform.
+	# Stores the full (keyboard-free) viewport height so we can detect
+	# when the on-screen keyboard shrinks the visible area.
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval(
+			'window.__tandoraFullHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight',
+			true
+		)
 
 	room_panel.visible = false
 	settings_panel.visible = false
@@ -113,20 +122,55 @@ func _on_reconnect_pressed():
 		status_label.text = "Reconnecting..."
 
 func _process(_delta):
-	if DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD):
-		var keyboard_css = DisplayServer.virtual_keyboard_get_height()
-		# Convert from CSS pixels to game coordinates.
-		# The game viewport (e.g. 540x960) is scaled to fit the browser window.
-		var window_size = DisplayServer.window_get_size()
-		var game_size = get_viewport().get_visible_rect().size
-		if window_size.y > 0 and game_size.y > 0:
-			var css_to_game = game_size.y / window_size.y
-			var keyboard_game = keyboard_css * css_to_game
-			# VBoxContainer has CENTER alignment, so content shifts by spacer/2.
-			# Double the spacer height so the input field clears the keyboard.
-			keyboard_spacer.custom_minimum_size.y = keyboard_game * 2.0
-		else:
-			keyboard_spacer.custom_minimum_size.y = 0.0
+	# Use JavaScript bridge on web — more reliable than DisplayServer's
+	# virtual_keyboard_get_height() which depends on the experimental
+	# VirtualKeyboard browser API (not supported everywhere).
+	var keyboard_css: float = 0.0
+	if OS.has_feature("web"):
+		keyboard_css = _get_keyboard_height_js()
+	else:
+		if DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD):
+			keyboard_css = float(DisplayServer.virtual_keyboard_get_height())
+	
+	if keyboard_css <= 0:
+		keyboard_spacer.custom_minimum_size.y = 0.0
+		return
+	
+	# Convert from CSS pixels to game coordinates.
+	# Use the canvas transform scale — more reliable than window size
+	# since the viewport may have been resized by the keyboard.
+	var canvas_scale = get_viewport().get_canvas_transform().get_scale().y
+	if canvas_scale > 0:
+		var keyboard_game = keyboard_css / canvas_scale
+		# VBoxContainer has CENTER alignment, so content shifts by spacer/2.
+		# Double the spacer height so the input field clears the keyboard.
+		keyboard_spacer.custom_minimum_size.y = keyboard_game * 2.0
+
+
+# Detects the on-screen keyboard height on mobile web using the most
+# accurate available browser API, falling back to visualViewport comparison.
+func _get_keyboard_height_js() -> float:
+	# Method 1: navigator.virtualKeyboard — most accurate, but only available
+	# when html/experimental_virtual_keyboard=true and the browser supports it.
+	var js = JavaScriptBridge.eval(
+		'navigator.virtualKeyboard ? navigator.virtualKeyboard.boundingRect.height : -1',
+		true
+	)
+	if js != null:
+		var nvk: float = float(js)
+		if nvk > 0:
+			return nvk
+	
+	# Method 2: visualViewport comparison — works on most mobile browsers
+	# when the keyboard resizes the viewport (default behaviour without
+	# overlaysContent / experimental_virtual_keyboard).
+	js = JavaScriptBridge.eval(
+		'(window.visualViewport && window.__tandoraFullHeight) ? Math.max(0, window.__tandoraFullHeight - window.visualViewport.height) : 0',
+		true
+	)
+	if js != null:
+		return float(js)
+	return 0.0
 
 func _update_player_tiles(count: int) -> void:
 	for i in range(player_tiles.size()):
