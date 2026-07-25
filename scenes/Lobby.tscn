@@ -13,6 +13,7 @@
 [ext_resource type="Texture2D" uid="uid://ccdhs6g5eitrn" path="res://assets/tile_6.png" id="10_ug4sb"]
 [ext_resource type="Texture2D" uid="uid://4casnxyrx8xe" path="res://assets/tile_7.png" id="11_5av17"]
 [ext_resource type="Texture2D" uid="uid://7trcqxg8juxr" path="res://assets/tile_8.png" id="12_yy2xu"]
+[ext_resource type="Texture2D" uid="uid://c7unbrwguuqx1" path="res://assets/gear_icon.png" id="13_gear"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_ras1x"]
 font = ExtResource("1_cdhm0")
@@ -40,7 +41,6 @@ script = ExtResource("1_6jt0u")
 layout_mode = 1
 
 [node name="SettingsButton" type="Button" parent="." unique_id=148643]
-visible = false
 layout_mode = 1
 anchors_preset = 1
 anchor_left = 1.0
@@ -50,17 +50,16 @@ offset_top = 40.0
 offset_right = -60.0
 offset_bottom = 100.0
 grow_horizontal = 0
-theme_override_font_sizes/font_size = 24
-text = "⚙"
+icon = ExtResource("13_gear")
+expand_icon = true
 
 [node name="HowToPlayButton" type="Button" parent="." unique_id=1178057476]
-visible = false
 layout_mode = 1
 offset_left = 60.0
 offset_top = 40.0
 offset_right = 120.0
 offset_bottom = 100.0
-theme_override_font_sizes/font_size = 30
+theme_override_font_sizes/font_size = 45
 text = "?"
 
 [node name="VBoxContainer" type="VBoxContainer" parent="." unique_id=720685230]
