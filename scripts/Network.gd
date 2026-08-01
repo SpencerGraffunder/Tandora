@@ -342,6 +342,10 @@ func rpc_player_input(player_number: int, control: String, pressed: bool):
 	if room == null or not room.started:
 		return
 	if control == "PAUSE":
+		# Only a press should toggle. Clients send PAUSE on both press and
+		# release (they don't know the current state), so ignore releases.
+		if not pressed:
+			return
 		room.logic.paused = !room.logic.paused
 		for peer_id in room.peers:
 			rpc_set_paused.rpc_id(peer_id, room.logic.paused)

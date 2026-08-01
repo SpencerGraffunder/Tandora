@@ -83,7 +83,11 @@ func _physics_process(_delta):
 			if cur[control] and not prev[control]:
 				_send_local_input(i, control, true)
 			elif not cur[control] and prev[control]:
-				_send_local_input(i, control, false)
+				# Pause is a toggle handled by the server; it must only fire on
+				# press, not on release, or a single keypress would pause and
+				# immediately resume.
+				if control != "PAUSE":
+					_send_local_input(i, control, false)
 		_prev_input[i] = cur
 
 # Reads the current raw input state for one local player (index 0..3).
