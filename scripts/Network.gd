@@ -11,6 +11,7 @@ var final_level: int = 0
 var is_dedicated_server: bool = false
 var starting_player_number: int = 0
 var starting_player_count: int = 2
+var local_player_count: int = 1
 var touchscreen_enabled: bool = true
 var room_device_ids: Dictionary = {}
 var leaderboard_dir: String = "user://leaderboards"
@@ -26,6 +27,7 @@ signal room_created(code)
 signal room_joined(player_count, code)
 signal room_updated(player_count, starting_level)
 signal leaderboard_updated(player_count, entries)
+signal local_players_updated(own_count)
 
 func _ready():
 	_set_server_address_and_protocol()
@@ -234,12 +236,12 @@ func rpc_leaderboard_response(player_count: int, entries: Array):
 # ---- CLIENT -> SERVER RPCs ----
 
 @rpc("any_peer", "call_remote", "reliable")
-func rpc_create_room(level: int, device_id: String = ""): # device_id is optional for backward compatibility
+func rpc_create_room(level: int, local_count: int = 1, device_id: String = ""):
 	if not is_dedicated_server:
 		return
 	var sender = multiplayer.get_remote_sender_id()
-	print_verbose("[SERVER] rpc_create_room: Peer ", sender, " creating room with level ", level, " device_id=", device_id)
-	var code = RoomManager.create_room(sender, level)
+	print_verbose("[SERVER] rpc_create_room: Peer ", sender, " creating room with level ", level, " local_players=", local_count, " device_id=", device_id)
+	var code = RoomManager.create_room(sender, level, local_count)
 	# Store device_id for reconnect logic
 	if not room_device_ids.has(code):
 		room_device_ids[code] = {}
@@ -248,22 +250,24 @@ func rpc_create_room(level: int, device_id: String = ""): # device_id is optiona
 	rpc_room_created.rpc_id(sender, code)
 
 @rpc("any_peer", "call_remote", "reliable")
-func rpc_join_room(code: String, device_id: String = ""): # device_id is optional for backward compatibility
+func rpc_join_room(code: String, local_count: int = 1, device_id: String = ""):
 	if not is_dedicated_server:
 		return
 	var sender = multiplayer.get_remote_sender_id()
-	print_verbose("[SERVER] rpc_join_room: Peer ", sender, " trying to join room ", code, " device_id=", device_id)
+	print_verbose("[SERVER] rpc_join_room: Peer ", sender, " trying to join room ", code, " local_players=", local_count, " device_id=", device_id)
 	# Reconnect logic: if device_id matches a previous player, reassign
 	if room_device_ids.has(code) and room_device_ids[code].has(device_id):
 		var old_sender = room_device_ids[code][device_id]
 		print_verbose("[SERVER] rpc_join_room: Reconnecting device_id=", device_id, " old_sender=", old_sender, " new_sender=", sender)
 		RoomManager.reassign_peer(code, old_sender, sender)
 		room_device_ids[code][device_id] = sender
+		# Apply the local player count from the reconnecting client.
+		RoomManager.update_local_players(sender, local_count)
 	else:
 		if not room_device_ids.has(code):
 			room_device_ids[code] = {}
 		room_device_ids[code][device_id] = sender
-		RoomManager.join_room(sender, code)
+		RoomManager.join_room(sender, code, local_count)
 	var success = RoomManager.peer_to_room.has(sender)
 	print_verbose("[SERVER] rpc_join_room: join_room returned ", success, " for sender=", sender, " code=", code)
 	print_verbose("[SERVER] peer_to_room after join: ", RoomManager.peer_to_room)
@@ -272,15 +276,31 @@ func rpc_join_room(code: String, device_id: String = ""): # device_id is optiona
 		if room == null:
 			print_verbose("[SERVER] ERROR: get_room_for_peer returned null for sender=", sender, " code=", code)
 		else:
-			print_verbose("[SERVER] rpc_join_room: Success - joining peer and notifying room with ", room.peers.size(), " peers")
-			rpc_room_joined.rpc_id(sender, room.peers.size(), room.code)
+			print_verbose("[SERVER] rpc_join_room: Success - joining peer and notifying room with ", room.total_players(), " player slots")
+			rpc_room_joined.rpc_id(sender, room.total_players(), room.code)
 			# notify all peers in room of updated count
 			for peer_id in room.peers:
 				print_verbose("[SERVER] rpc_join_room: Notifying peer ", peer_id, " of room update")
-				rpc_room_updated.rpc_id(peer_id, room.peers.size(), room.starting_level)
+				rpc_room_updated.rpc_id(peer_id, room.total_players(), room.starting_level)
 	else:
 		print_verbose("[SERVER] rpc_join_room: Failed - sending join_failed to peer ", sender)
 		rpc_join_failed.rpc_id(sender)
+
+# Client updates how many local players it has while sitting in a room.
+@rpc("any_peer", "call_remote", "reliable")
+func rpc_update_local_players(local_count: int):
+	if not is_dedicated_server:
+		return
+	var sender = multiplayer.get_remote_sender_id()
+	print_verbose("[SERVER] rpc_update_local_players: Peer ", sender, " setting local players to ", local_count)
+	var new_total = RoomManager.update_local_players(sender, local_count)
+	var room = RoomManager.get_room_for_peer(sender)
+	if room == null or new_total < 0:
+		return
+	var own_count = room.local_player_counts.get(sender, 1)
+	for peer_id in room.peers:
+		rpc_room_updated.rpc_id(peer_id, new_total, room.starting_level)
+	rpc_local_players_ack.rpc_id(sender, own_count)
 
 @rpc("any_peer", "call_remote", "reliable")
 func rpc_update_level(level: int):
@@ -292,7 +312,7 @@ func rpc_update_level(level: int):
 		return
 	room.starting_level = level
 	for peer_id in room.peers:
-		rpc_room_updated.rpc_id(peer_id, room.peers.size(), room.starting_level)
+		rpc_room_updated.rpc_id(peer_id, room.total_players(), room.starting_level)
 
 @rpc("any_peer", "call_remote", "reliable")
 func rpc_start_game():
@@ -306,10 +326,12 @@ func rpc_start_game():
 		return
 	var success = RoomManager.start_room(room.code)
 	if success:
-		print_verbose("[SERVER] rpc_start_game: Starting game for ", room.peers.size(), " peers")
+		print_verbose("[SERVER] rpc_start_game: Starting game for ", room.total_players(), " players across ", room.peers.size(), " peers")
 		for i in range(room.peers.size()):
-			print_verbose("[SERVER] rpc_start_game: Sending rpc_game_starting to peer ", room.peers[i], " with player number ", i)
-			rpc_game_starting.rpc_id(room.peers[i], i, room.peers.size(), room.starting_level)
+			var first = room.first_player_number(i)
+			var local_count = room.local_player_counts.get(room.peers[i], 1)
+			print_verbose("[SERVER] rpc_start_game: Sending rpc_game_starting to peer ", room.peers[i], " first_player=", first, " total=", room.total_players(), " local=", local_count)
+			rpc_game_starting.rpc_id(room.peers[i], first, room.total_players(), local_count, room.starting_level)
 
 @rpc("any_peer", "call_remote", "reliable")
 func rpc_player_input(player_number: int, control: String, pressed: bool):
@@ -369,13 +391,20 @@ func rpc_join_failed():
 	connection_failed.emit()
 
 @rpc("authority", "call_remote", "reliable")
-func rpc_game_starting(player_number: int, player_count: int, level: int):
-	print_verbose("[CLIENT] rpc_game_starting: I am player ", player_number, " of ", player_count, " at level ", level)
+func rpc_game_starting(player_number: int, player_count: int, local_count: int, level: int):
+	print_verbose("[CLIENT] rpc_game_starting: I am player ", player_number, " of ", player_count, " at level ", level, " with ", local_count, " local players")
 	players[multiplayer.get_unique_id()] = { "player_number": player_number }
 	starting_level = level
 	starting_player_number = player_number
 	starting_player_count = player_count
+	local_player_count = local_count
 	get_tree().change_scene_to_file("res://scenes/Main.tscn")
+
+# Server acknowledges the clamped local player count back to the requesting client.
+@rpc("authority", "call_remote", "reliable")
+func rpc_local_players_ack(own_count: int):
+	local_player_count = own_count
+	local_players_updated.emit(own_count)
 
 @rpc("authority", "call_remote", "unreliable_ordered")
 func rpc_sync_state(data: PackedByteArray):

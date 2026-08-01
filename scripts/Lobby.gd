@@ -9,6 +9,7 @@ const Enums = preload("res://scripts/Enums.gd")
 @onready var room_panel = $RoomPanel
 @onready var code_label = $RoomPanel/VBoxContainer/CodeLabel
 @onready var level_spinbox = $RoomPanel/VBoxContainer/HBoxContainer2/StartingLevelSpinBox
+@onready var local_players_spinbox = $RoomPanel/VBoxContainer/HBoxContainer3/LocalPlayersSpinBox
 @onready var start_button = $RoomPanel/VBoxContainer/HBoxContainer/StartButton
 @onready var leave_button = $RoomPanel/VBoxContainer/HBoxContainer/LeaveButton
 @onready var keyboard_spacer = $VBoxContainer/KeyboardSpacer
@@ -38,6 +39,7 @@ var is_creator: bool = false
 var lost_connection := false
 var device_id: String = ""
 var touchscreen_enabled: bool = true
+var _updating_local_players := false
 
 @onready var _main_vbox = $VBoxContainer
 var _vbox_offset_top: float
@@ -62,6 +64,11 @@ func _ready():
 	start_button.pressed.connect(_on_start_pressed)
 	leave_button.pressed.connect(_on_leave_pressed)
 	level_spinbox.value_changed.connect(_on_level_changed)
+	# Local players: one connection can control 1-4 players (keyboard + joypads).
+	local_players_spinbox.min_value = 1
+	local_players_spinbox.max_value = 4
+	local_players_spinbox.value = 1
+	local_players_spinbox.value_changed.connect(_on_local_players_changed)
 	room_code_input.text_submitted.connect(func(_text): _on_join_pressed())
 	room_code_input.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_DEFAULT
 	room_code_input.focus_entered.connect(func(): DisplayServer.virtual_keyboard_show(room_code_input.text))
@@ -88,6 +95,7 @@ func _ready():
 	Network.room_joined.connect(_on_room_joined)
 	Network.room_updated.connect(_on_room_updated)
 	Network.leaderboard_updated.connect(_on_leaderboard_updated)
+	Network.local_players_updated.connect(_on_local_players_updated)
 
 	# Cache device ID (cast as Node since compiler doesn't recognize autoload)
 	device_id = get_node("/root/DeviceID").get_device_id()
@@ -187,12 +195,12 @@ func _populate_leaderboard_rows(entries: Array) -> void:
 
 func _on_create_pressed():
 	is_creator = true
-	Network.rpc_create_room.rpc_id(1, int(level_spinbox.value), device_id)
+	Network.rpc_create_room.rpc_id(1, int(level_spinbox.value), int(local_players_spinbox.value), device_id)
 
 func _on_join_pressed():
 	var code = room_code_input.text.strip_edges().to_lower()
 	is_creator = false
-	Network.rpc_join_room.rpc_id(1, code, device_id)
+	Network.rpc_join_room.rpc_id(1, code, int(local_players_spinbox.value), device_id)
 
 func _on_start_pressed():
 	Network.rpc_start_game.rpc_id(1)
@@ -200,6 +208,23 @@ func _on_start_pressed():
 func _on_level_changed(value: float):
 	if is_creator:
 		Network.rpc_update_level.rpc_id(1, int(value))
+
+# Fires when the user changes the Local Players spinbox while in a room.
+func _on_local_players_changed(value: float):
+	if _updating_local_players:
+		return
+	var count = clampi(int(value), 1, 4)
+	if count != int(value):
+		_updating_local_players = true
+		local_players_spinbox.value = count
+		_updating_local_players = false
+	Network.rpc_update_local_players.rpc_id(1, count)
+
+# Server echoes the clamped local player count back so the UI stays in sync.
+func _on_local_players_updated(count: int):
+	_updating_local_players = true
+	local_players_spinbox.value = count
+	_updating_local_players = false
 
 func _show_room_panel():
 	room_panel.visible = true
@@ -217,18 +242,23 @@ func _hide_room_panel():
 	room_status_label.visible = true
 
 func _on_room_created(code: String):
-	_update_player_tiles(1)
+	var my_local_count = int(local_players_spinbox.value)
+	_update_player_tiles(my_local_count)
 	code_label.text = code.to_upper()
 	level_spinbox.editable = true
+	local_players_spinbox.editable = true
 	start_button.visible = true
+	room_status_label.text = "Players: " + str(my_local_count)
 	_show_room_panel()
 
 func _on_room_joined(player_count: int, code: String):
 	code_label.text = code.to_upper()
 	level_spinbox.editable = false
+	local_players_spinbox.editable = true
 	start_button.visible = false
 	_show_room_panel()
 	room_status_label.text = "Players: " + str(player_count)
+	_update_player_tiles(player_count)
 	_update_room_leaderboard(player_count)
 
 func _on_leave_pressed():
