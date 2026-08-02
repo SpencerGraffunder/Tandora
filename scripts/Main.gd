@@ -19,14 +19,13 @@ const PieceScript = preload("res://scripts/Piece.gd")
 @onready var pause_overlay = $PauseOverlay
 @onready var player1_area = $Player1Area
 
-var local_player_number: int = 0
-var local_player_count: int = 2
+var first_player_number: int = 0
+var player_count: int = 2         # total players in the game (all clients combined)
+var local_player_count: int = 1   # number of players controlled by THIS client
 var previews: Array = []
 
-# Track previous action states to detect press/release
-var prev_move_left: bool = false
-var prev_move_right: bool = false
-var prev_move_down: bool = false
+# Per-local-player previous input states for press/release detection
+var _prev_input: Array = []
 
 var _last_received_seq: int = -1
 var _waiting_for_full_sync: bool = false
@@ -34,20 +33,26 @@ var game_over_animation_active: bool = false
 
 
 func _ready():
-	local_player_number = Network.starting_player_number
-	local_player_count = Network.starting_player_count
-	game_board.init_board(local_player_count)
+	first_player_number = Network.starting_player_number
+	player_count = Network.starting_player_count
+	local_player_count = Network.local_player_count
+	game_board.init_board(player_count)
 	
 	# Populate the previews array
 	previews = [preview_p1, preview_p2, preview_p3, preview_p4, preview_p5, preview_p6, preview_p7, preview_p8]
 	
 	# Show only previews for active players and initialize them
 	for i in range(previews.size()):
-		if i < local_player_count:
+		if i < player_count:
 			previews[i].visible = true
 			previews[i].board_tile_size = game_board.tile_size
 		else:
 			previews[i].visible = false
+
+	# Seed previous input state so no phantom presses fire on the first frame.
+	_prev_input.resize(local_player_count)
+	for i in range(local_player_count):
+		_prev_input[i] = _sample_input(i)
 
 	print_verbose("Main ready, connecting signals")
 	Network.player_disconnected.connect(_on_player_disconnected)
@@ -67,49 +72,70 @@ func _ready():
 	# Conditionally show/hide touch buttons based on settings
 	_update_touch_buttons()
 
+const JOY_DEADZONE: float = 0.2
+
 func _physics_process(_delta):
-	# Check pause action
-	if Input.is_action_just_pressed("pause"):
-		_on_pause_pressed()
-		return
-	
-	# Check movement and rotation actions
-	if Input.is_action_just_pressed("rotate_cw"):
-		_on_button("CW", true)
-	if Input.is_action_just_pressed("rotate_ccw"):
-		_on_button("CCW", true)
-	
-	# Detect press/release transitions for continuous actions
-	var curr_move_left = Input.is_action_pressed("move_left")
-	var curr_move_right = Input.is_action_pressed("move_right")
-	var curr_move_down = Input.is_action_pressed("move_down")
-	
-	# LEFT
-	if curr_move_left and not prev_move_left:
-		_on_button("LEFT", true)
-	elif not curr_move_left and prev_move_left:
-		_on_button("LEFT", false)
-	
-	# RIGHT
-	if curr_move_right and not prev_move_right:
-		_on_button("RIGHT", true)
-	elif not curr_move_right and prev_move_right:
-		_on_button("RIGHT", false)
-	
-	# DOWN
-	if curr_move_down and not prev_move_down:
-		_on_button("DOWN", true)
-	elif not curr_move_down and prev_move_down:
-		_on_button("DOWN", false)
-	
-	# Update previous states
-	prev_move_left = curr_move_left
-	prev_move_right = curr_move_right
-	prev_move_down = curr_move_down
+	# Poll each local player's raw inputs and send press/release transitions.
+	for i in range(local_player_count):
+		var cur = _sample_input(i)
+		var prev = _prev_input[i]
+		for control in ["CCW", "CW", "LEFT", "RIGHT", "DOWN", "PAUSE"]:
+			if cur[control] and not prev[control]:
+				_send_local_input(i, control, true)
+			elif not cur[control] and prev[control]:
+				# Pause is a toggle handled by the server; it must only fire on
+				# press, not on release, or a single keypress would pause and
+				# immediately resume.
+				if control != "PAUSE":
+					_send_local_input(i, control, false)
+		_prev_input[i] = cur
 
+# Reads the current raw input state for one local player (index 0..3).
+# Player 1 (index 0): q/e/a/s/d + keyboard + joypad device 0
+# Player 2 (index 1): u/o/j/k/l + keyboard + joypad device 1
+# Players 3-4 (index 2-3): joypad devices 2-3 only
+func _sample_input(local_index: int) -> Dictionary:
+	var out := {"CCW": false, "CW": false, "LEFT": false, "RIGHT": false, "DOWN": false, "PAUSE": false}
 
+	if local_index == 0:
+		out["CCW"] = Input.is_physical_key_pressed(KEY_Q)
+		out["CW"] = Input.is_physical_key_pressed(KEY_E)
+		out["LEFT"] = Input.is_physical_key_pressed(KEY_A)
+		out["RIGHT"] = Input.is_physical_key_pressed(KEY_D)
+		out["DOWN"] = Input.is_physical_key_pressed(KEY_S)
+		out["PAUSE"] = Input.is_physical_key_pressed(KEY_ESCAPE)
+	elif local_index == 1:
+		out["CCW"] = Input.is_physical_key_pressed(KEY_U)
+		out["CW"] = Input.is_physical_key_pressed(KEY_O)
+		out["LEFT"] = Input.is_physical_key_pressed(KEY_J)
+		out["RIGHT"] = Input.is_physical_key_pressed(KEY_L)
+		out["DOWN"] = Input.is_physical_key_pressed(KEY_K)
+
+	# Local player N uses joypad device N-1 (0-indexed). Same button layout as
+	# the original single-player bindings, but scoped to a specific device.
+	var device := local_index
+	out["CCW"] = out["CCW"] or Input.is_joy_button_pressed(device, JOY_BUTTON_LEFT_SHOULDER) \
+		or Input.is_joy_button_pressed(device, JOY_BUTTON_A)
+	out["CW"] = out["CW"] or Input.is_joy_button_pressed(device, JOY_BUTTON_RIGHT_SHOULDER) \
+		or Input.is_joy_button_pressed(device, JOY_BUTTON_B)
+	out["LEFT"] = out["LEFT"] or Input.is_joy_button_pressed(device, JOY_BUTTON_DPAD_LEFT) \
+		or Input.get_joy_axis(device, JOY_AXIS_LEFT_X) < -JOY_DEADZONE
+	out["RIGHT"] = out["RIGHT"] or Input.is_joy_button_pressed(device, JOY_BUTTON_DPAD_RIGHT) \
+		or Input.get_joy_axis(device, JOY_AXIS_LEFT_X) > JOY_DEADZONE
+	out["DOWN"] = out["DOWN"] or Input.is_joy_button_pressed(device, JOY_BUTTON_DPAD_DOWN) \
+		or Input.get_joy_axis(device, JOY_AXIS_LEFT_Y) > JOY_DEADZONE
+	out["PAUSE"] = out["PAUSE"] or Input.is_joy_button_pressed(device, JOY_BUTTON_START)
+
+	return out
+
+# Sends an input event for a local player to the server as its assigned player number.
+func _send_local_input(local_index: int, control: String, pressed: bool) -> void:
+	var player_number = first_player_number + local_index
+	Network.rpc_player_input.rpc_id(1, player_number, control, pressed)
+
+# Touch buttons always drive local player 1 (index 0).
 func _on_button(control: String, pressed: bool) -> void:
-	Network.rpc_player_input.rpc_id(1, local_player_number, control, pressed)
+	_send_local_input(0, control, pressed)
 
 @rpc("authority", "call_remote", "unreliable_ordered")
 func rpc_sync_state(data: PackedByteArray):
@@ -147,9 +173,9 @@ func _apply_full_snapshot(buf: StreamPeerBuffer) -> void:
 	level_label.text = "Level: " + str(level)
 	lines_label.text = "Lines: " + str(lines)
 
-	var player_count = buf.get_u8()
+	var num_players = buf.get_u8()
 	var players_state = []
-	for i in range(player_count):
+	for i in range(num_players):
 		players_state.append(_read_player_from_buffer(buf))
 
 	var clearing_line_count = buf.get_u8()
@@ -190,9 +216,9 @@ func _apply_delta(buf: StreamPeerBuffer) -> void:
 	level_label.text = "Level: " + str(level)
 	lines_label.text = "Lines: " + str(lines)
 
-	var player_count = buf.get_u8()
+	var num_players = buf.get_u8()
 	var players_state = []
-	for i in range(player_count):
+	for i in range(num_players):
 		players_state.append(_read_player_from_buffer(buf))
 
 	var clearing_line_count = buf.get_u8()
@@ -249,16 +275,16 @@ func _apply_players_state(players_state: Array) -> void:
 	for i in range(players_state.size()):
 		var pd = players_state[i]
 		if pd.next_locs.size() > 0:
-			var dummy_piece = PieceScript.new(pd.next_type, pd.player_number, 0, local_player_count)
+			var dummy_piece = PieceScript.new(pd.next_type, pd.player_number, 0, player_count)
 			for j in range(pd.next_locs.size()):
 				dummy_piece.locations[j] = Vector2i(pd.next_locs[j][0], pd.next_locs[j][1])
 			if i < previews.size():
-				previews[i].set_piece(dummy_piece, i, local_player_count)
+				previews[i].set_piece(dummy_piece, i, player_count)
 	game_board.set_active_pieces(players_state)
 	game_board.queue_redraw()
 
 func _on_pause_pressed():
-	Network.rpc_player_input.rpc_id(1, local_player_number, "PAUSE", true)
+	_send_local_input(0, "PAUSE", true)
 
 func set_paused(p: bool) -> void:
 	pause_overlay.visible = p

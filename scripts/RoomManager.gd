@@ -13,6 +13,7 @@ var peer_to_room: Dictionary = {}  # peer_id -> room_code
 class Room:
 	var code: String
 	var peers: Array = []  # peer ids
+	var local_player_counts: Dictionary = {}  # peer_id -> number of local players on that connection
 	var logic: Object = null
 	var started: bool = false
 	var creator: int = 0
@@ -28,6 +29,20 @@ class Room:
 		creator = p_creator
 		peers.append(p_creator)
 
+	# Total number of player slots the room occupies (sum of each peer's local players).
+	func total_players() -> int:
+		var total: int = 0
+		for peer_id in peers:
+			total += local_player_counts.get(peer_id, 1)
+		return total
+
+	# First (lowest) player number owned by the peer at peers[peer_index].
+	func first_player_number(peer_index: int) -> int:
+		var first: int = 0
+		for i in range(peer_index):
+			first += local_player_counts.get(peers[i], 1)
+		return first
+
 func generate_code() -> String:
 	var code_length = 3
 	if OS.has_feature("local"):
@@ -40,16 +55,17 @@ func generate_code() -> String:
 			return code
 	return ""
 
-func create_room(creator_id: int, starting_level: int) -> String:
+func create_room(creator_id: int, starting_level: int, local_count: int = 1) -> String:
 	var code = generate_code()
 	var room = Room.new(code, creator_id)
 	room.starting_level = starting_level
+	room.local_player_counts[creator_id] = clampi(local_count, 1, 4)
 	rooms[code] = room
 	peer_to_room[creator_id] = code
-	print_verbose("[SERVER RoomManager] create_room: Room created: ", code, " by peer ", creator_id, " at level ", starting_level)
+	print_verbose("[SERVER RoomManager] create_room: Room created: ", code, " by peer ", creator_id, " at level ", starting_level, " with ", room.local_player_counts[creator_id], " local players")
 	return code
 
-func join_room(peer_id: int, code: String) -> bool:
+func join_room(peer_id: int, code: String, local_count: int = 1) -> bool:
 	code = code.to_lower()
 	if not rooms.has(code):
 		print_verbose("[SERVER RoomManager] join_room: Room ", code, " not found")
@@ -58,14 +74,32 @@ func join_room(peer_id: int, code: String) -> bool:
 	if room.started:
 		print_verbose("[SERVER RoomManager] join_room: Room ", code, " already started")
 		return false
-	if room.peers.size() >= 8:
-		print_verbose("[SERVER RoomManager] join_room: Room ", code, " is full")
+	local_count = clampi(local_count, 1, 4)
+	if room.total_players() + local_count > 8:
+		print_verbose("[SERVER RoomManager] join_room: Room ", code, " is full (slots)")
 		return false
 	if not room.peers.has(peer_id):
 		room.peers.append(peer_id)
 	peer_to_room[peer_id] = code
-	print_verbose("[SERVER RoomManager] join_room: Peer ", peer_id, " joined room ", code, " (now ", room.peers.size(), " peers)")
+	room.local_player_counts[peer_id] = local_count
+	print_verbose("[SERVER RoomManager] join_room: Peer ", peer_id, " joined room ", code, " (now ", room.total_players(), " player slots)")
 	return true
+
+# Updates how many local players a peer contributes to a room. Clamps so the
+# room never exceeds the 8-slot cap. Returns the new total player count, or -1
+# if the peer isn't in a room.
+func update_local_players(peer_id: int, count: int) -> int:
+	if not peer_to_room.has(peer_id):
+		return -1
+	var room = rooms[peer_to_room[peer_id]]
+	if room.started:
+		return room.total_players()
+	var current: int = room.local_player_counts.get(peer_id, 1)
+	var others: int = room.total_players() - current
+	var clamped: int = clampi(count, 1, max(1, 8 - others))
+	room.local_player_counts[peer_id] = clamped
+	print_verbose("[SERVER RoomManager] update_local_players: Peer ", peer_id, " now has ", clamped, " local players (total ", room.total_players(), ")")
+	return room.total_players()
 
 func reassign_peer(code: String, old_peer_id: int, new_peer_id: int) -> void:
 	if not rooms.has(code):
@@ -83,6 +117,10 @@ func reassign_peer(code: String, old_peer_id: int, new_peer_id: int) -> void:
 		room.peers.append(new_peer_id)
 	peer_to_room.erase(old_peer_id)
 	peer_to_room[new_peer_id] = code
+	# Carry over the local player count from the old connection.
+	if room.local_player_counts.has(old_peer_id):
+		room.local_player_counts[new_peer_id] = room.local_player_counts[old_peer_id]
+		room.local_player_counts.erase(old_peer_id)
 	print_verbose("[SERVER RoomManager] reassign_peer: Reassigned ", old_peer_id, " to ", new_peer_id, " in room ", code)
 
 func leave_room(peer_id: int) -> void:
@@ -97,7 +135,8 @@ func leave_room(peer_id: int) -> void:
 		return
 	var room = rooms[code]
 	room.peers.erase(peer_id)
-	print_verbose("[SERVER RoomManager] leave_room: Room ", code, " now has ", room.peers.size(), " peers")
+	room.local_player_counts.erase(peer_id)
+	print_verbose("[SERVER RoomManager] leave_room: Room ", code, " now has ", room.peers.size(), " peers / ", room.total_players(), " slots")
 	if room.peers.is_empty():
 		print_verbose("[SERVER RoomManager] leave_room: Room is now empty, dissolving")
 		dissolve_room(code)
@@ -121,13 +160,14 @@ func start_room(code: String) -> bool:
 	var room = rooms[code]
 	if room.started:
 		return false
+	var total_players = room.total_players()
 	room.logic = GameLogicScript.new()
-	room.logic.reset(room.peers.size(), room.starting_level)
-	room.starting_player_count = room.peers.size()
+	room.logic.reset(total_players, room.starting_level)
+	room.starting_player_count = total_players
 	room.logic.game_over_triggered.connect(func(): _on_game_over(code))
 	room.started = true
 	# Initialize last_sent_board to all BLANK so first tick diffs as fully changed
-	var board_width = (4 * room.peers.size()) + 6
+	var board_width = (4 * total_players) + 6
 	room.last_sent_board = []
 	for r in range(Enums.TOTAL_ROWS):
 		var row = []
@@ -135,7 +175,7 @@ func start_room(code: String) -> bool:
 			row.append(Enums.TileType.BLANK)
 		room.last_sent_board.append(row)
 	room.last_sent_seq = 0
-	print_verbose("Room started: ", code, " with ", room.peers.size(), " players")
+	print_verbose("Room started: ", code, " with ", room.peers.size(), " peers / ", total_players, " players")
 	return true
 
 func get_room_for_peer(peer_id: int) -> Room:
