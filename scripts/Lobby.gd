@@ -101,6 +101,7 @@ func _ready():
 	Network.room_updated.connect(_on_room_updated)
 	Network.leaderboard_updated.connect(_on_leaderboard_updated)
 	Network.local_players_updated.connect(_on_local_players_updated)
+	Network.room_creator_changed.connect(_on_creator_changed)
 
 	# Cache device ID (cast as Node since compiler doesn't recognize autoload)
 	device_id = get_node("/root/DeviceID").get_device_id()
@@ -230,7 +231,7 @@ func _on_create_pressed():
 func _on_join_pressed():
 	var code = room_code_input.text.strip_edges().to_lower()
 	is_creator = false
-	Network.rpc_join_room.rpc_id(1, code, int(local_players_spinbox.value), device_id)
+	Network.rpc_join_room.rpc_id(1, code, int(local_players_spinbox.value), device_id, Network.username)
 
 func _on_start_pressed():
 	Network.rpc_start_game.rpc_id(1)
@@ -276,22 +277,33 @@ func _on_room_created(code: String):
 	var my_local_count = int(local_players_spinbox.value)
 	_update_player_tiles(my_local_count)
 	code_label.text = code.to_upper()
-	level_spinbox.editable = true
 	local_players_spinbox.editable = true
-	start_button.visible = true
+	_update_creator_ui()
 	room_status_label.text = "Players: " + str(my_local_count)
 	_show_room_panel()
 	_update_username_warning()
 
 func _on_room_joined(player_count: int, code: String):
 	code_label.text = code.to_upper()
-	level_spinbox.editable = false
 	local_players_spinbox.editable = true
-	start_button.visible = false
+	_update_creator_ui()
 	_show_room_panel()
 	room_status_label.text = "Players: " + str(player_count)
 	_update_player_tiles(player_count)
 	_update_room_leaderboard(player_count)
+	_update_username_warning()
+
+# Reflects whether this client is the room host: only the host can edit the
+# starting level and start the game.
+func _update_creator_ui() -> void:
+	level_spinbox.editable = is_creator
+	start_button.visible = is_creator
+
+# Leadership can transfer if the original host leaves the lobby. Update our
+# host state and UI accordingly.
+func _on_creator_changed(creator_id: int) -> void:
+	is_creator = creator_id == multiplayer.get_unique_id()
+	_update_creator_ui()
 	_update_username_warning()
 
 func _on_leave_pressed():

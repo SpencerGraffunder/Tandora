@@ -29,6 +29,7 @@ signal room_joined(player_count, code)
 signal room_updated(player_count, starting_level)
 signal leaderboard_updated(player_count, entries)
 signal local_players_updated(own_count)
+signal room_creator_changed(creator_id)
 
 func _ready():
 	_set_server_address_and_protocol()
@@ -120,7 +121,8 @@ func _on_peer_disconnected(id):
 	player_disconnected.emit(id)
 
 # Removes a peer from its room and, if the room was still in the lobby, tells
-# the remaining players so their room-panel player list stays in sync.
+# the remaining players so their room-panel player list stays in sync and, if
+# leadership changed, so the new host's UI updates.
 func _remove_peer_from_room_and_notify(peer_id: int) -> void:
 	var room = RoomManager.get_room_for_peer(peer_id)
 	if room == null:
@@ -130,6 +132,7 @@ func _remove_peer_from_room_and_notify(peer_id: int) -> void:
 	if not was_started and not room.peers.is_empty():
 		for other in room.peers:
 			rpc_room_updated.rpc_id(other, room.total_players(), room.starting_level)
+			rpc_creator_changed.rpc_id(other, room.creator)
 
 func _on_connected_to_server():
 	print_verbose("[CLIENT] Connected to server!")
@@ -285,7 +288,7 @@ func rpc_create_room(level: int, local_count: int = 1, device_id: String = "", h
 	rpc_room_created.rpc_id(sender, code)
 
 @rpc("any_peer", "call_remote", "reliable")
-func rpc_join_room(code: String, local_count: int = 1, device_id: String = ""):
+func rpc_join_room(code: String, local_count: int = 1, device_id: String = "", peer_username: String = ""):
 	if not is_dedicated_server:
 		return
 	var sender = multiplayer.get_remote_sender_id()
@@ -302,7 +305,7 @@ func rpc_join_room(code: String, local_count: int = 1, device_id: String = ""):
 		if not room_device_ids.has(code):
 			room_device_ids[code] = {}
 		room_device_ids[code][device_id] = sender
-		RoomManager.join_room(sender, code, local_count)
+		RoomManager.join_room(sender, code, local_count, peer_username)
 	var success = RoomManager.peer_to_room.has(sender)
 	print_verbose("[SERVER] rpc_join_room: join_room returned ", success, " for sender=", sender, " code=", code)
 	print_verbose("[SERVER] peer_to_room after join: ", RoomManager.peer_to_room)
@@ -428,6 +431,13 @@ func rpc_room_joined(player_count: int, code: String):
 func rpc_room_updated(player_count: int, level: int):
 	print_verbose("[CLIENT] rpc_room_updated: Room updated - ", player_count, " players, level ", level)
 	room_updated.emit(player_count, level)
+
+# Informs a client whether they are the current room host (after a leadership
+# transfer, e.g. the original host left the lobby).
+@rpc("authority", "call_remote", "reliable")
+func rpc_creator_changed(creator_id: int):
+	print_verbose("[CLIENT] rpc_creator_changed: creator is ", creator_id)
+	room_creator_changed.emit(creator_id)
 
 @rpc("authority", "call_remote", "reliable")
 func rpc_join_failed():
