@@ -31,16 +31,22 @@ signal local_players_updated(own_count)
 
 func _ready():
 	_set_server_address_and_protocol()
-	leaderboard_base_path = ProjectSettings.globalize_path("user://")
-	var resolved_leaderboard_dir = ProjectSettings.globalize_path(leaderboard_dir)
-	print("[SERVER/CLIENT] Leaderboard base path: ", leaderboard_base_path)
-	print("[SERVER/CLIENT] Leaderboard dir: ", resolved_leaderboard_dir)
-	var dir_err = DirAccess.make_dir_absolute(leaderboard_dir)
-	if dir_err != OK:
-		printerr("[SERVER/CLIENT] Failed to create leaderboard directory: error code ", dir_err)
 	if DisplayServer.get_name() == "headless":
 		is_dedicated_server = true
 		start_dedicated_server()
+
+	leaderboard_base_path = ProjectSettings.globalize_path("user://")
+	if is_dedicated_server:
+		# Only the dedicated server writes leaderboard files; clients request
+		# them over the network. The directory may already exist from a
+		# previous run (make_dir_absolute returns ERR_FILE_EXISTS then), which
+		# is fine and not an error.
+		print("[SERVER] Leaderboard dir: ", ProjectSettings.globalize_path(leaderboard_dir))
+		if not DirAccess.dir_exists_absolute(leaderboard_dir):
+			var dir_err = DirAccess.make_dir_absolute(leaderboard_dir)
+			if dir_err != OK:
+				printerr("[SERVER] Failed to create leaderboard directory: error code ", dir_err)
+
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
