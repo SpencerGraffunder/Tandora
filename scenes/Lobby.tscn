@@ -432,6 +432,40 @@ grow_vertical = 2
 [node name="ColorRect" parent="HowToPlayPanel" unique_id=1277585750 instance=ExtResource("2_ras1x")]
 layout_mode = 1
 
+[node name="VBoxContainer2" type="VBoxContainer" parent="HowToPlayPanel" unique_id=2026000005]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -255.0
+offset_top = -440.0
+offset_right = 255.0
+offset_bottom = 440.0
+grow_horizontal = 2
+grow_vertical = 2
+alignment = 1
+
+[node name="TitleLabel" type="Label" parent="HowToPlayPanel/VBoxContainer2" unique_id=2026000006]
+layout_mode = 2
+text = "How to Play"
+label_settings = SubResource("LabelSettings_oeg6l")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="HowToPlayPanel/VBoxContainer2" unique_id=2026000007]
+layout_mode = 2
+
+[node name="ContentLabel" type="RichTextLabel" parent="HowToPlayPanel/VBoxContainer2" unique_id=2026000008]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_font_sizes/normal_font_size = 26
+theme_override_font_sizes/bold_font_size = 28
+bbcode_enabled = true
+scroll_active = false
+text = "[b]THE GOAL - CO-OP[/b]\nAll players share one board: drop pieces, fill rows, clear them together.\nKeep the stack from reaching the top.\nThe board grows wider as more players join.\n\n[b]SCORING & LEVELS[/b]\n1 row = 40 | 2 = 100 | 3 = 300 | 4 = 1200\nScore is multiplied by your level, so later clears pay more.\nClearing rows raises the level (about every 10 rows with up to 3 players, 30 with 4+) and speeds up the fall.\n\n[b]CONTROLS[/b]\nP1 (keyboard): Q/E rotate | A/D move | S soft drop | Esc pause\nP2 (keyboard): U/O rotate | J/L move | K soft drop\nGamepads: each player uses their own - A/B or shoulders rotate, d-pad/stick move, Start pauses. P3 & P4 are gamepad-only.\nTouch: on-screen buttons (player 1).\n\n[b]LOBBY[/b]\nHost creates a room and shares the code (up to 8 players).\nHost sets the starting level, local players per device (1-4), and starts.\nIf the host leaves, the next player becomes host.\n\n[b]LEADERBOARD[/b]\nSeparate leaderboard per player count (1-8), top 5 shown.\nThe host's username is saved when a game ends - set one in Settings or your score is skipped."
+
 [node name="CloseButton" type="Button" parent="HowToPlayPanel" unique_id=2025749383]
 layout_mode = 1
 offset_left = 60.0
