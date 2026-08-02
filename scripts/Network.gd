@@ -13,14 +13,12 @@ var starting_player_number: int = 0
 var starting_player_count: int = 2
 var local_player_count: int = 1
 var touchscreen_enabled: bool = true
+var username: String = ""  # display name for leaderboard entries (host only)
 var room_device_ids: Dictionary = {}
 var leaderboard_dir: String = "user://leaderboards"
 var leaderboard_limit: int = 25
-var leaderboard_base_path: String = ""
 var leaderboard_cache: Dictionary = {}
 
-signal player_connected(id)
-signal player_disconnected(id)
 signal connection_failed
 signal connection_succeeded
 signal room_created(code)
@@ -28,6 +26,7 @@ signal room_joined(player_count, code)
 signal room_updated(player_count, starting_level)
 signal leaderboard_updated(player_count, entries)
 signal local_players_updated(own_count)
+signal room_creator_changed(creator_id)
 
 func _ready():
 	_set_server_address_and_protocol()
@@ -35,7 +34,6 @@ func _ready():
 		is_dedicated_server = true
 		start_dedicated_server()
 
-	leaderboard_base_path = ProjectSettings.globalize_path("user://")
 	if is_dedicated_server:
 		# Only the dedicated server writes leaderboard files; clients request
 		# them over the network. The directory may already exist from a
@@ -93,14 +91,6 @@ func connect_to_server():
 	multiplayer.multiplayer_peer = peer
 	print("[CLIENT] Connecting to WebSocket server at ", uri)
 
-func get_player_number() -> int:
-	if multiplayer.is_server():
-		return 0
-	var my_id = multiplayer.get_unique_id()
-	if players.has(my_id):
-		return players[my_id].player_number
-	return -1
-
 func _physics_process(_delta):
 	if is_dedicated_server:
 		RoomManager.tick(_delta)
@@ -109,14 +99,26 @@ func _on_peer_connected(id):
 	print_verbose("[SERVER/CLIENT] Peer connected: ", id, " (is_dedicated_server=", is_dedicated_server, ")")
 	if is_dedicated_server:
 		players[id] = { "id": id }
-	player_connected.emit(id)
 
 func _on_peer_disconnected(id):
 	print_verbose("[SERVER/CLIENT] Peer disconnected: ", id, " (is_dedicated_server=", is_dedicated_server, ")")
 	if is_dedicated_server:
-		RoomManager.leave_room(id)
+		_remove_peer_from_room_and_notify(id)
 	players.erase(id)
-	player_disconnected.emit(id)
+
+# Removes a peer from its room and, if the room was still in the lobby, tells
+# the remaining players so their room-panel player list stays in sync and, if
+# leadership changed, so the new host's UI updates.
+func _remove_peer_from_room_and_notify(peer_id: int) -> void:
+	var room = RoomManager.get_room_for_peer(peer_id)
+	if room == null:
+		return
+	var was_started = room.started
+	RoomManager.leave_room(peer_id)
+	if not was_started and not room.peers.is_empty():
+		for other in room.peers:
+			rpc_room_updated.rpc_id(other, room.total_players(), room.starting_level)
+			rpc_creator_changed.rpc_id(other, room.creator)
 
 func _on_connected_to_server():
 	print_verbose("[CLIENT] Connected to server!")
@@ -133,6 +135,17 @@ func _limit_entries(entries: Array, limit: int) -> Array:
 	for i in range(min(entries.size(), limit)):
 		limited.append(entries[i])
 	return limited
+
+# Strips control characters and whitespace, then clamps to the max display
+# length (16). Returns "" if there's nothing usable left.
+func _sanitize_username(value: String) -> String:
+	var out := ""
+	for i in range(value.length()):
+		var ch = value[i]
+		if ch.unicode_at(0) < 32:
+			continue
+		out += ch
+	return out.strip_edges().left(16)
 
 func _load_leaderboard_from_disk(player_count: int, limit: int = 5) -> Array:
 	if player_count < 1 or player_count > 8:
@@ -159,8 +172,13 @@ func _load_leaderboard_from_disk(player_count: int, limit: int = 5) -> Array:
 	printerr("[SERVER/CLIENT] Leaderboard JSON was not an array: ", absolute_path)
 	return []
 
-func save_leaderboard_entry(player_count: int, score: int, level: int, player_numbers: Array, username: String = "", timestamp: String = "") -> void:
+func save_leaderboard_entry(player_count: int, score: int, level: int, player_numbers: Array, display_name: String = "", timestamp: String = "") -> void:
 	if player_count < 1 or player_count > 8:
+		return
+	display_name = _sanitize_username(display_name)
+	if display_name == "":
+		# No display name set for the host — don't save an anonymous score.
+		print_verbose("[SERVER/CLIENT] Skipping leaderboard save: no username set")
 		return
 	var path = "%s/%d.json" % [leaderboard_dir, player_count]
 	var absolute_path = ProjectSettings.globalize_path(path)
@@ -178,7 +196,7 @@ func save_leaderboard_entry(player_count: int, score: int, level: int, player_nu
 		"score": int(score),
 		"level": int(level),
 		"timestamp": timestamp if timestamp != "" else Time.get_datetime_string_from_system(false, false),
-		"usernames": [username] if username != "" else [],
+		"usernames": [display_name],
 		"player_numbers": player_numbers
 	}
 	entries.append(entry)
@@ -242,12 +260,12 @@ func rpc_leaderboard_response(player_count: int, entries: Array):
 # ---- CLIENT -> SERVER RPCs ----
 
 @rpc("any_peer", "call_remote", "reliable")
-func rpc_create_room(level: int, local_count: int = 1, device_id: String = ""):
+func rpc_create_room(level: int, local_count: int = 1, device_id: String = "", host_username: String = ""):
 	if not is_dedicated_server:
 		return
 	var sender = multiplayer.get_remote_sender_id()
-	print_verbose("[SERVER] rpc_create_room: Peer ", sender, " creating room with level ", level, " local_players=", local_count, " device_id=", device_id)
-	var code = RoomManager.create_room(sender, level, local_count)
+	print_verbose("[SERVER] rpc_create_room: Peer ", sender, " creating room with level ", level, " local_players=", local_count, " device_id=", device_id, " username=", host_username)
+	var code = RoomManager.create_room(sender, level, local_count, host_username)
 	# Store device_id for reconnect logic
 	if not room_device_ids.has(code):
 		room_device_ids[code] = {}
@@ -256,7 +274,7 @@ func rpc_create_room(level: int, local_count: int = 1, device_id: String = ""):
 	rpc_room_created.rpc_id(sender, code)
 
 @rpc("any_peer", "call_remote", "reliable")
-func rpc_join_room(code: String, local_count: int = 1, device_id: String = ""):
+func rpc_join_room(code: String, local_count: int = 1, device_id: String = "", peer_username: String = ""):
 	if not is_dedicated_server:
 		return
 	var sender = multiplayer.get_remote_sender_id()
@@ -273,7 +291,7 @@ func rpc_join_room(code: String, local_count: int = 1, device_id: String = ""):
 		if not room_device_ids.has(code):
 			room_device_ids[code] = {}
 		room_device_ids[code][device_id] = sender
-		RoomManager.join_room(sender, code, local_count)
+		RoomManager.join_room(sender, code, local_count, peer_username)
 	var success = RoomManager.peer_to_room.has(sender)
 	print_verbose("[SERVER] rpc_join_room: join_room returned ", success, " for sender=", sender, " code=", code)
 	print_verbose("[SERVER] peer_to_room after join: ", RoomManager.peer_to_room)
@@ -372,12 +390,16 @@ func rpc_leave_game():
 		return
 	var sender = multiplayer.get_remote_sender_id()
 	print_verbose("[SERVER] rpc_leave_game: Peer ", sender, " is leaving game")
-	var room = RoomManager.get_room_for_peer(sender)
-	print_verbose("[SERVER] rpc_leave_game: Room found: ", room != null, " Room code: ", room.code if room != null else "NONE")
-	if room != null:
-		print_verbose("[SERVER] rpc_leave_game: Room had ", room.peers.size(), " peers")
-		RoomManager.leave_room(sender)
-		print_verbose("[SERVER] rpc_leave_game: After leaving, room has ", room.peers.size(), " peers")
+	_remove_peer_from_room_and_notify(sender)
+
+# Client leaves a room from the lobby.
+@rpc("any_peer", "call_remote", "reliable")
+func rpc_leave_room():
+	if not is_dedicated_server:
+		return
+	var sender = multiplayer.get_remote_sender_id()
+	print_verbose("[SERVER] rpc_leave_room: Peer ", sender, " is leaving room")
+	_remove_peer_from_room_and_notify(sender)
 
 # ---- SERVER -> CLIENT RPCs ----
 
@@ -395,6 +417,13 @@ func rpc_room_joined(player_count: int, code: String):
 func rpc_room_updated(player_count: int, level: int):
 	print_verbose("[CLIENT] rpc_room_updated: Room updated - ", player_count, " players, level ", level)
 	room_updated.emit(player_count, level)
+
+# Informs a client whether they are the current room host (after a leadership
+# transfer, e.g. the original host left the lobby).
+@rpc("authority", "call_remote", "reliable")
+func rpc_creator_changed(creator_id: int):
+	print_verbose("[CLIENT] rpc_creator_changed: creator is ", creator_id)
+	room_creator_changed.emit(creator_id)
 
 @rpc("authority", "call_remote", "reliable")
 func rpc_join_failed():

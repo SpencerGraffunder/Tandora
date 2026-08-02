@@ -14,6 +14,8 @@ class Room:
 	var code: String
 	var peers: Array = []  # peer ids
 	var local_player_counts: Dictionary = {}  # peer_id -> number of local players on that connection
+	var peer_usernames: Dictionary = {}  # peer_id -> display name (used when leadership transfers)
+	var username: String = ""  # display name of the host (used for leaderboards)
 	var logic: Object = null
 	var started: bool = false
 	var creator: int = 0
@@ -55,17 +57,19 @@ func generate_code() -> String:
 			return code
 	return ""
 
-func create_room(creator_id: int, starting_level: int, local_count: int = 1) -> String:
+func create_room(creator_id: int, starting_level: int, local_count: int = 1, username: String = "") -> String:
 	var code = generate_code()
 	var room = Room.new(code, creator_id)
 	room.starting_level = starting_level
 	room.local_player_counts[creator_id] = clampi(local_count, 1, 4)
+	room.peer_usernames[creator_id] = username
+	room.username = username
 	rooms[code] = room
 	peer_to_room[creator_id] = code
 	print_verbose("[SERVER RoomManager] create_room: Room created: ", code, " by peer ", creator_id, " at level ", starting_level, " with ", room.local_player_counts[creator_id], " local players")
 	return code
 
-func join_room(peer_id: int, code: String, local_count: int = 1) -> bool:
+func join_room(peer_id: int, code: String, local_count: int = 1, username: String = "") -> bool:
 	code = code.to_lower()
 	if not rooms.has(code):
 		print_verbose("[SERVER RoomManager] join_room: Room ", code, " not found")
@@ -82,6 +86,7 @@ func join_room(peer_id: int, code: String, local_count: int = 1) -> bool:
 		room.peers.append(peer_id)
 	peer_to_room[peer_id] = code
 	room.local_player_counts[peer_id] = local_count
+	room.peer_usernames[peer_id] = username
 	print_verbose("[SERVER RoomManager] join_room: Peer ", peer_id, " joined room ", code, " (now ", room.total_players(), " player slots)")
 	return true
 
@@ -117,10 +122,13 @@ func reassign_peer(code: String, old_peer_id: int, new_peer_id: int) -> void:
 		room.peers.append(new_peer_id)
 	peer_to_room.erase(old_peer_id)
 	peer_to_room[new_peer_id] = code
-	# Carry over the local player count from the old connection.
+	# Carry over the local player count and username from the old connection.
 	if room.local_player_counts.has(old_peer_id):
 		room.local_player_counts[new_peer_id] = room.local_player_counts[old_peer_id]
 		room.local_player_counts.erase(old_peer_id)
+	if room.peer_usernames.has(old_peer_id):
+		room.peer_usernames[new_peer_id] = room.peer_usernames[old_peer_id]
+		room.peer_usernames.erase(old_peer_id)
 	print_verbose("[SERVER RoomManager] reassign_peer: Reassigned ", old_peer_id, " to ", new_peer_id, " in room ", code)
 
 func leave_room(peer_id: int) -> void:
@@ -136,11 +144,18 @@ func leave_room(peer_id: int) -> void:
 	var room = rooms[code]
 	room.peers.erase(peer_id)
 	room.local_player_counts.erase(peer_id)
+	room.peer_usernames.erase(peer_id)
 	print_verbose("[SERVER RoomManager] leave_room: Room ", code, " now has ", room.peers.size(), " peers / ", room.total_players(), " slots")
 	if room.peers.is_empty():
 		print_verbose("[SERVER RoomManager] leave_room: Room is now empty, dissolving")
 		dissolve_room(code)
 	else:
+		# If the creator left, hand leadership to the oldest remaining peer and
+		# adopt their username for the leaderboard.
+		if not room.peers.has(room.creator):
+			room.creator = room.peers[0]
+			room.username = room.peer_usernames.get(room.creator, "")
+			print_verbose("[SERVER RoomManager] leave_room: New creator for room ", code, " is ", room.creator, " username=", room.username)
 		print_verbose("[SERVER RoomManager] leave_room: Room still has players, keeping it alive")
 
 func dissolve_room(code: String) -> void:
@@ -422,7 +437,7 @@ func _on_game_over(code: String) -> void:
 	for i in range(room.peers.size()):
 		player_numbers.append(i)
 	var timestamp = Time.get_datetime_string_from_system(false, false)
-	Network.save_leaderboard_entry(room.starting_player_count, room.logic.state.score, room.logic.state.current_level, player_numbers, "", timestamp)
+	Network.save_leaderboard_entry(room.starting_player_count, room.logic.state.score, room.logic.state.current_level, player_numbers, room.username, timestamp)
 	print_verbose("[SERVER RoomManager] _on_game_over: Sending game over to ", room.peers.size(), " peers in room ", code)
 	for peer_id in room.peers:
 		print_verbose("[SERVER RoomManager] _on_game_over: Sending rpc_game_over to peer ", peer_id)

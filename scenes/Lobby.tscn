@@ -234,6 +234,15 @@ max_value = 4.0
 alignment = 1
 editable = false
 
+[node name="UsernameWarningLabel" type="Label" parent="RoomPanel/VBoxContainer" unique_id=2026000004]
+visible = false
+layout_mode = 2
+theme_override_font_sizes/font_size = 25
+theme_override_colors/font_color = Color(1, 0.45, 0.3, 1)
+text = "No username set - your score won't be on the leaderboard. Set one in Settings."
+autowrap_mode = 2
+horizontal_alignment = 1
+
 [node name="HBoxContainer" type="HBoxContainer" parent="RoomPanel/VBoxContainer" unique_id=854998653]
 layout_mode = 2
 
@@ -389,6 +398,21 @@ vertical_alignment = 1
 
 [node name="HSeparator" type="HSeparator" parent="SettingsPanel/VBoxContainer" unique_id=2025749381]
 layout_mode = 2
+
+[node name="HBoxContainer4" type="HBoxContainer" parent="SettingsPanel/VBoxContainer" unique_id=2026000001]
+layout_mode = 2
+
+[node name="UsernameLabel" type="Label" parent="SettingsPanel/VBoxContainer/HBoxContainer4" unique_id=2026000002]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 25
+text = "Username"
+
+[node name="UsernameLineEdit" type="LineEdit" parent="SettingsPanel/VBoxContainer/HBoxContainer4" unique_id=2026000003]
+layout_mode = 2
+size_flags_horizontal = 3
+max_length = 16
+theme_override_font_sizes/font_size = 25
 
 [node name="TouchscreenToggle" type="CheckBox" parent="SettingsPanel/VBoxContainer" unique_id=999900001]
 layout_mode = 2

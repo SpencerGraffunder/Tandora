@@ -12,16 +12,6 @@ var game_state = null
 var clearing_rows: Array = []
 var game_over_progress: float = 0.0
 
-func set_state(new_state) -> void:
-	game_state = new_state
-	if tile_size == 0:
-		cols = game_state.board_width
-		tile_size = min(size.x / cols, size.y / Enums.VISIBLE_ROWS)
-		offset = Vector2(
-			(size.x - (tile_size * cols)) / 2,
-			(size.y - (tile_size * Enums.VISIBLE_ROWS)) / 2
-		)
-
 func init_board(player_count: int):
 	cols = (4 * player_count) + 6
 	tile_size = min(size.x / cols, size.y / Enums.VISIBLE_ROWS)

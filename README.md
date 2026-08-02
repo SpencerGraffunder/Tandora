@@ -2,7 +2,10 @@ Play the classic game WITH your friends! Place blocks and clear lines on a singl
 
 Features:
 - 1-8 players
+- Multiple local players per device (keyboards + controllers)
 - Controller support
+- Custom host usernames on the leaderboards
+- Leader reassignment when the host leaves a lobby
 - Native iOS, tvOS, Android, and universal web versions
 - Different leaderboard for each player count
 

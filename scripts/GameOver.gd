@@ -1,5 +1,7 @@
 extends Control
 
+const LeaderboardUI = preload("res://scripts/LeaderboardUI.gd")
+
 @onready var score_value = $VBoxContainer/HBoxContainer/Score
 @onready var level_value = $VBoxContainer/HBoxContainer2/Level
 @onready var leaderboard_container = $VBoxContainer/LeaderboardContainer
@@ -33,22 +35,7 @@ func _populate_rows(entries: Array) -> void:
 		leaderboard_container.add_child(empty_label)
 		return
 	for i in range(entries.size()):
-		var entry = entries[i]
-		var row = HBoxContainer.new()
-		row.alignment = BoxContainer.ALIGNMENT_CENTER
-		var rank_label = Label.new()
-		rank_label.text = str(i + 1) + "."
-		rank_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var score_label = Label.new()
-		score_label.text = str(int(entry.get("score", 0)))
-		score_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var players_label = Label.new()
-		players_label.text = str(entry.get("player_numbers", []))
-		players_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(rank_label)
-		row.add_child(score_label)
-		row.add_child(players_label)
-		leaderboard_container.add_child(row)
+		leaderboard_container.add_child(LeaderboardUI.build_row(i, entries[i]))
 
 func _on_main_menu_pressed():
 	print("[CLIENT GameOver] _on_main_menu_pressed: Changing to Lobby scene")
