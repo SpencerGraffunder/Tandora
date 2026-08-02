@@ -115,9 +115,21 @@ func _on_peer_connected(id):
 func _on_peer_disconnected(id):
 	print_verbose("[SERVER/CLIENT] Peer disconnected: ", id, " (is_dedicated_server=", is_dedicated_server, ")")
 	if is_dedicated_server:
-		RoomManager.leave_room(id)
+		_remove_peer_from_room_and_notify(id)
 	players.erase(id)
 	player_disconnected.emit(id)
+
+# Removes a peer from its room and, if the room was still in the lobby, tells
+# the remaining players so their room-panel player list stays in sync.
+func _remove_peer_from_room_and_notify(peer_id: int) -> void:
+	var room = RoomManager.get_room_for_peer(peer_id)
+	if room == null:
+		return
+	var was_started = room.started
+	RoomManager.leave_room(peer_id)
+	if not was_started and not room.peers.is_empty():
+		for other in room.peers:
+			rpc_room_updated.rpc_id(other, room.total_players(), room.starting_level)
 
 func _on_connected_to_server():
 	print_verbose("[CLIENT] Connected to server!")
@@ -389,12 +401,16 @@ func rpc_leave_game():
 		return
 	var sender = multiplayer.get_remote_sender_id()
 	print_verbose("[SERVER] rpc_leave_game: Peer ", sender, " is leaving game")
-	var room = RoomManager.get_room_for_peer(sender)
-	print_verbose("[SERVER] rpc_leave_game: Room found: ", room != null, " Room code: ", room.code if room != null else "NONE")
-	if room != null:
-		print_verbose("[SERVER] rpc_leave_game: Room had ", room.peers.size(), " peers")
-		RoomManager.leave_room(sender)
-		print_verbose("[SERVER] rpc_leave_game: After leaving, room has ", room.peers.size(), " peers")
+	_remove_peer_from_room_and_notify(sender)
+
+# Client leaves a room from the lobby.
+@rpc("any_peer", "call_remote", "reliable")
+func rpc_leave_room():
+	if not is_dedicated_server:
+		return
+	var sender = multiplayer.get_remote_sender_id()
+	print_verbose("[SERVER] rpc_leave_room: Peer ", sender, " is leaving room")
+	_remove_peer_from_room_and_notify(sender)
 
 # ---- SERVER -> CLIENT RPCs ----
 

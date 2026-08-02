@@ -45,7 +45,7 @@ func _build_leaderboard_row(rank: int, entry: Dictionary) -> HBoxContainer:
 
 	var is_me = _entry_is_mine(entry)
 	var name_label = Label.new()
-	name_label.text = ("★ " if is_me else "") + _entry_display_name(entry)
+	name_label.text = _entry_display_name(entry)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	name_label.autowrap_mode = TextServer.AUTOWRAP_OFF
@@ -53,7 +53,7 @@ func _build_leaderboard_row(rank: int, entry: Dictionary) -> HBoxContainer:
 		name_label.add_theme_color_override("font_color", Color(1.0, 0.84, 0.3))
 
 	var score_label = Label.new()
-	score_label.text = str(int(entry.get("score", 0)))
+	score_label.text = ("★ " if is_me else "") + str(int(entry.get("score", 0)))
 	score_label.size_flags_horizontal = Control.SIZE_SHRINK_END
 	score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 
