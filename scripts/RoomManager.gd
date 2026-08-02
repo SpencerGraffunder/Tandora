@@ -14,6 +14,7 @@ class Room:
 	var code: String
 	var peers: Array = []  # peer ids
 	var local_player_counts: Dictionary = {}  # peer_id -> number of local players on that connection
+	var username: String = ""  # display name of the host (used for leaderboards)
 	var logic: Object = null
 	var started: bool = false
 	var creator: int = 0
@@ -55,11 +56,12 @@ func generate_code() -> String:
 			return code
 	return ""
 
-func create_room(creator_id: int, starting_level: int, local_count: int = 1) -> String:
+func create_room(creator_id: int, starting_level: int, local_count: int = 1, username: String = "") -> String:
 	var code = generate_code()
 	var room = Room.new(code, creator_id)
 	room.starting_level = starting_level
 	room.local_player_counts[creator_id] = clampi(local_count, 1, 4)
+	room.username = username
 	rooms[code] = room
 	peer_to_room[creator_id] = code
 	print_verbose("[SERVER RoomManager] create_room: Room created: ", code, " by peer ", creator_id, " at level ", starting_level, " with ", room.local_player_counts[creator_id], " local players")
@@ -422,7 +424,7 @@ func _on_game_over(code: String) -> void:
 	for i in range(room.peers.size()):
 		player_numbers.append(i)
 	var timestamp = Time.get_datetime_string_from_system(false, false)
-	Network.save_leaderboard_entry(room.starting_player_count, room.logic.state.score, room.logic.state.current_level, player_numbers, "", timestamp)
+	Network.save_leaderboard_entry(room.starting_player_count, room.logic.state.score, room.logic.state.current_level, player_numbers, room.username, timestamp)
 	print_verbose("[SERVER RoomManager] _on_game_over: Sending game over to ", room.peers.size(), " peers in room ", code)
 	for peer_id in room.peers:
 		print_verbose("[SERVER RoomManager] _on_game_over: Sending rpc_game_over to peer ", peer_id)

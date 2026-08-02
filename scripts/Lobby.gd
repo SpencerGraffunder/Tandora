@@ -23,6 +23,8 @@ const Enums = preload("res://scripts/Enums.gd")
 @onready var how_to_play_panel = $HowToPlayPanel
 @onready var how_to_play_close_button = $HowToPlayPanel/CloseButton
 @onready var touchscreen_toggle = $SettingsPanel/VBoxContainer/TouchscreenToggle
+@onready var username_lineedit = $SettingsPanel/VBoxContainer/HBoxContainer4/UsernameLineEdit
+@onready var username_warning_label = $RoomPanel/VBoxContainer/UsernameWarningLabel
 @onready var version_label = $HBoxContainer/VersionLabel
 @onready var player_tiles = [
 	$RoomPanel/VBoxContainer/PlayerList/P1,
@@ -85,6 +87,9 @@ func _ready():
 	how_to_play_button.pressed.connect(_on_how_to_play_pressed)
 	how_to_play_close_button.pressed.connect(_close_how_to_play_panel)
 	touchscreen_toggle.toggled.connect(_on_touchscreen_toggled)
+	username_lineedit.max_length = 16
+	username_lineedit.text_changed.connect(_on_username_changed)
+	username_lineedit.focus_exited.connect(_on_username_focus_exited)
 	
 	for tile in player_tiles:
 		tile.visible = false
@@ -176,26 +181,51 @@ func _populate_leaderboard_rows(entries: Array) -> void:
 		room_leaderboard_container.add_child(empty_label)
 		return
 	for i in range(entries.size()):
-		var entry = entries[i]
-		var row = HBoxContainer.new()
-		row.alignment = BoxContainer.ALIGNMENT_CENTER
-		var rank_label = Label.new()
-		rank_label.text = str(i + 1) + "."
-		rank_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var score_label = Label.new()
-		score_label.text = str(int(entry.get("score", 0)))
-		score_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var players_label = Label.new()
-		players_label.text = str(entry.get("player_numbers", []))
-		players_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(rank_label)
-		row.add_child(score_label)
-		row.add_child(players_label)
-		room_leaderboard_container.add_child(row)
+		room_leaderboard_container.add_child(_build_leaderboard_row(i, entries[i]))
+
+func _build_leaderboard_row(rank: int, entry: Dictionary) -> HBoxContainer:
+	var row = HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+
+	var rank_label = Label.new()
+	rank_label.text = str(rank + 1) + "."
+	rank_label.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+
+	var is_me = _entry_is_mine(entry)
+	var name_label = Label.new()
+	name_label.text = ("★ " if is_me else "") + _entry_display_name(entry)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	name_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	if is_me:
+		name_label.add_theme_color_override("font_color", Color(1.0, 0.84, 0.3))
+
+	var score_label = Label.new()
+	score_label.text = str(int(entry.get("score", 0)))
+	score_label.size_flags_horizontal = Control.SIZE_SHRINK_END
+	score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+
+	row.add_child(rank_label)
+	row.add_child(name_label)
+	row.add_child(score_label)
+	return row
+
+func _entry_display_name(entry: Dictionary) -> String:
+	var usernames = entry.get("usernames", [])
+	if usernames is Array and usernames.size() > 0:
+		return ", ".join(usernames)
+	return "Anonymous"
+
+func _entry_is_mine(entry: Dictionary) -> bool:
+	var my_name = Network.username.strip_edges()
+	if my_name == "":
+		return false
+	var usernames = entry.get("usernames", [])
+	return usernames is Array and usernames.has(my_name)
 
 func _on_create_pressed():
 	is_creator = true
-	Network.rpc_create_room.rpc_id(1, int(level_spinbox.value), int(local_players_spinbox.value), device_id)
+	Network.rpc_create_room.rpc_id(1, int(level_spinbox.value), int(local_players_spinbox.value), device_id, Network.username)
 
 func _on_join_pressed():
 	var code = room_code_input.text.strip_edges().to_lower()
@@ -240,6 +270,7 @@ func _hide_room_panel():
 	join_button.visible = true
 	room_code_input.visible = true
 	room_status_label.visible = true
+	_update_username_warning()
 
 func _on_room_created(code: String):
 	var my_local_count = int(local_players_spinbox.value)
@@ -250,6 +281,7 @@ func _on_room_created(code: String):
 	start_button.visible = true
 	room_status_label.text = "Players: " + str(my_local_count)
 	_show_room_panel()
+	_update_username_warning()
 
 func _on_room_joined(player_count: int, code: String):
 	code_label.text = code.to_upper()
@@ -260,6 +292,7 @@ func _on_room_joined(player_count: int, code: String):
 	room_status_label.text = "Players: " + str(player_count)
 	_update_player_tiles(player_count)
 	_update_room_leaderboard(player_count)
+	_update_username_warning()
 
 func _on_leave_pressed():
 	print_verbose("[CLIENT Lobby] _on_leave_pressed: Leaving room")
@@ -270,6 +303,7 @@ func _on_settings_pressed():
 
 func _close_settings_panel():
 	settings_panel.visible = false
+	_update_username_warning()
 
 func _on_how_to_play_pressed():
 	how_to_play_panel.visible = true
@@ -295,6 +329,8 @@ func _load_settings() -> void:
 	if err == OK:
 		touchscreen_enabled = config.get_value("input", "touchscreen", true)
 		touchscreen_toggle.button_pressed = touchscreen_enabled
+		Network.username = config.get_value("profile", "username", "")
+		username_lineedit.text = Network.username
 
 func _save_settings() -> void:
 	var config = ConfigFile.new()
@@ -302,4 +338,24 @@ func _save_settings() -> void:
 	if err != OK:
 		pass  # file doesn't exist yet, that's fine
 	config.set_value("input", "touchscreen", touchscreen_enabled)
+	config.set_value("profile", "username", Network.username)
 	config.save("user://tandora.cfg")
+
+func _on_username_changed(text: String) -> void:
+	Network.username = text
+	_save_settings()
+	_update_username_warning()
+
+# Trim whitespace when the username field loses focus so we store a clean name.
+func _on_username_focus_exited() -> void:
+	var trimmed = username_lineedit.text.strip_edges()
+	if trimmed != Network.username:
+		username_lineedit.text = trimmed
+		Network.username = trimmed
+		_save_settings()
+	_update_username_warning()
+
+# The host gets a warning if they have no username, since their score won't be
+# recorded on the leaderboard.
+func _update_username_warning() -> void:
+	username_warning_label.visible = room_panel.visible and is_creator and Network.username.strip_edges() == ""
