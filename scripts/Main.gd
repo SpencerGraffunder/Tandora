@@ -55,7 +55,6 @@ func _ready():
 		_prev_input[i] = _sample_input(i)
 
 	print_verbose("Main ready, connecting signals")
-	Network.player_disconnected.connect(_on_player_disconnected)
 
 	$Player1Area/VBoxContainer/TopButtonRow/PauseButton.button_down.connect(_on_pause_pressed)
 	$Player1Area/VBoxContainer/TopButtonRow/RotateLeftButton.button_down.connect(func(): _on_button("CCW", true))
@@ -294,9 +293,6 @@ func set_paused(p: bool) -> void:
 	$Player1Area/VBoxContainer/BottomButtonRow/LeftButton.disabled = p
 	$Player1Area/VBoxContainer/BottomButtonRow/DownButton.disabled = p
 	$Player1Area/VBoxContainer/BottomButtonRow/RightButton.disabled = p
-
-func _on_player_disconnected(_id):
-	pass
 
 func _on_main_menu_pressed():
 	print_verbose("[CLIENT Main] _on_main_menu_pressed: Calling rpc_leave_game on server and returning to Lobby scene")

@@ -1,6 +1,7 @@
 extends Control
 
 const Enums = preload("res://scripts/Enums.gd")
+const LeaderboardUI = preload("res://scripts/LeaderboardUI.gd")
 
 @onready var room_code_input = $VBoxContainer/HBoxContainer/RoomCodeLineEdit
 @onready var create_button = $VBoxContainer/CreateButton
@@ -42,6 +43,7 @@ var lost_connection := false
 var device_id: String = ""
 var touchscreen_enabled: bool = true
 var _updating_local_players := false
+var _room_player_count: int = 1
 
 @onready var _main_vbox = $VBoxContainer
 var _vbox_offset_top: float
@@ -160,6 +162,7 @@ func _on_room_code_focus_lost() -> void:
 		_main_vbox.offset_bottom = _vbox_offset_bottom
 
 func _update_player_tiles(count: int) -> void:
+	_room_player_count = count
 	for i in range(player_tiles.size()):
 		player_tiles[i].visible = i < count
 	_update_room_leaderboard(count)
@@ -182,47 +185,7 @@ func _populate_leaderboard_rows(entries: Array) -> void:
 		room_leaderboard_container.add_child(empty_label)
 		return
 	for i in range(entries.size()):
-		room_leaderboard_container.add_child(_build_leaderboard_row(i, entries[i]))
-
-func _build_leaderboard_row(rank: int, entry: Dictionary) -> HBoxContainer:
-	var row = HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-
-	var rank_label = Label.new()
-	rank_label.text = str(rank + 1) + "."
-	rank_label.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-
-	var is_me = _entry_is_mine(entry)
-	var name_label = Label.new()
-	name_label.text = _entry_display_name(entry)
-	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	name_label.autowrap_mode = TextServer.AUTOWRAP_OFF
-	if is_me:
-		name_label.add_theme_color_override("font_color", Color(1.0, 0.84, 0.3))
-
-	var score_label = Label.new()
-	score_label.text = ("★ " if is_me else "") + str(int(entry.get("score", 0)))
-	score_label.size_flags_horizontal = Control.SIZE_SHRINK_END
-	score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-
-	row.add_child(rank_label)
-	row.add_child(name_label)
-	row.add_child(score_label)
-	return row
-
-func _entry_display_name(entry: Dictionary) -> String:
-	var usernames = entry.get("usernames", [])
-	if usernames is Array and usernames.size() > 0:
-		return ", ".join(usernames)
-	return "Anonymous"
-
-func _entry_is_mine(entry: Dictionary) -> bool:
-	var my_name = Network.username.strip_edges()
-	if my_name == "":
-		return false
-	var usernames = entry.get("usernames", [])
-	return usernames is Array and usernames.has(my_name)
+		room_leaderboard_container.add_child(LeaderboardUI.build_row(i, entries[i]))
 
 func _on_create_pressed():
 	is_creator = true
@@ -263,7 +226,7 @@ func _show_room_panel():
 	join_button.visible = false
 	room_code_input.visible = false
 	room_status_label.visible = false
-	_update_room_leaderboard(max(1, min(8, room_status_label.text.to_int() if room_status_label.text.is_valid_int() else 1)))
+	_update_room_leaderboard(_room_player_count)
 
 func _hide_room_panel():
 	room_panel.visible = false
@@ -287,10 +250,9 @@ func _on_room_joined(player_count: int, code: String):
 	code_label.text = code.to_upper()
 	local_players_spinbox.editable = true
 	_update_creator_ui()
-	_show_room_panel()
 	room_status_label.text = "Players: " + str(player_count)
 	_update_player_tiles(player_count)
-	_update_room_leaderboard(player_count)
+	_show_room_panel()
 	_update_username_warning()
 
 # Reflects whether this client is the room host: only the host can edit the

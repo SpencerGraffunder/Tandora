@@ -112,18 +112,18 @@ func rotate(rotation_direction: int, locs: Array = [], rot = null) -> int:
 			var pivot: Vector2i
 			if piece_type == Enums.PieceType.I:
 				pivot = locs[2]
-				turn = Enums.Turn.CW if rot in [0, 180] else Enums.Turn.CCW
+				turn = Enums.Rotation.CW if rot in [0, 180] else Enums.Rotation.CCW
 			elif piece_type == Enums.PieceType.S:
 				pivot = Vector2i(locs[0].x, locs[0].y)
-				turn = Enums.Turn.CCW if rot in [0, 180] else Enums.Turn.CW
+				turn = Enums.Rotation.CCW if rot in [0, 180] else Enums.Rotation.CW
 			elif piece_type == Enums.PieceType.Z:
 				pivot = Vector2i(locs[1].x, locs[1].y)
-				turn = Enums.Turn.CCW if rot in [0, 180] else Enums.Turn.CW
-			if turn == Enums.Turn.CW:
+				turn = Enums.Rotation.CCW if rot in [0, 180] else Enums.Rotation.CW
+			if turn == Enums.Rotation.CW:
 				for i in range(locs.size()):
 					locs[i] = Vector2i((pivot.y - locs[i].y) + pivot.x, (locs[i].x - pivot.x) + pivot.y)
 				new_rotation = (rot + 90) % 360
-			elif turn == Enums.Turn.CCW:
+			elif turn == Enums.Rotation.CCW:
 				for i in range(locs.size()):
 					locs[i] = Vector2i((locs[i].y - pivot.y) + pivot.x, (pivot.x - locs[i].x) + pivot.y)
 				new_rotation = (rot - 90) % 360

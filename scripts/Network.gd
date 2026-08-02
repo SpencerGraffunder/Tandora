@@ -17,11 +17,8 @@ var username: String = ""  # display name for leaderboard entries (host only)
 var room_device_ids: Dictionary = {}
 var leaderboard_dir: String = "user://leaderboards"
 var leaderboard_limit: int = 25
-var leaderboard_base_path: String = ""
 var leaderboard_cache: Dictionary = {}
 
-signal player_connected(id)
-signal player_disconnected(id)
 signal connection_failed
 signal connection_succeeded
 signal room_created(code)
@@ -37,7 +34,6 @@ func _ready():
 		is_dedicated_server = true
 		start_dedicated_server()
 
-	leaderboard_base_path = ProjectSettings.globalize_path("user://")
 	if is_dedicated_server:
 		# Only the dedicated server writes leaderboard files; clients request
 		# them over the network. The directory may already exist from a
@@ -95,14 +91,6 @@ func connect_to_server():
 	multiplayer.multiplayer_peer = peer
 	print("[CLIENT] Connecting to WebSocket server at ", uri)
 
-func get_player_number() -> int:
-	if multiplayer.is_server():
-		return 0
-	var my_id = multiplayer.get_unique_id()
-	if players.has(my_id):
-		return players[my_id].player_number
-	return -1
-
 func _physics_process(_delta):
 	if is_dedicated_server:
 		RoomManager.tick(_delta)
@@ -111,14 +99,12 @@ func _on_peer_connected(id):
 	print_verbose("[SERVER/CLIENT] Peer connected: ", id, " (is_dedicated_server=", is_dedicated_server, ")")
 	if is_dedicated_server:
 		players[id] = { "id": id }
-	player_connected.emit(id)
 
 func _on_peer_disconnected(id):
 	print_verbose("[SERVER/CLIENT] Peer disconnected: ", id, " (is_dedicated_server=", is_dedicated_server, ")")
 	if is_dedicated_server:
 		_remove_peer_from_room_and_notify(id)
 	players.erase(id)
-	player_disconnected.emit(id)
 
 # Removes a peer from its room and, if the room was still in the lobby, tells
 # the remaining players so their room-panel player list stays in sync and, if
