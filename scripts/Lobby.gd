@@ -75,10 +75,11 @@ func _ready():
 	local_players_spinbox.value_changed.connect(_on_local_players_changed)
 	room_code_input.text_submitted.connect(func(_text): _on_join_pressed())
 	room_code_input.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_DEFAULT
-	room_code_input.focus_entered.connect(func(): DisplayServer.virtual_keyboard_show(room_code_input.text))
 	# On mobile web the virtual keyboard covers the input field.
 	# Shift the VBoxContainer up when the input gets focus so the
 	# user can see what they're typing, and restore when focus is lost.
+	# Only do this on devices that actually have a soft keyboard —
+	# desktop browsers have a hardware keyboard and must not be affected.
 	_vbox_offset_top = _main_vbox.offset_top
 	_vbox_offset_bottom = _main_vbox.offset_bottom
 	room_code_input.focus_entered.connect(_on_room_code_focus_gained)
@@ -140,23 +141,39 @@ func _on_reconnect_pressed():
 		status_label.text = "Reconnecting..."
 
 func _process(_delta):
-	if DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD):
+	if _has_soft_keyboard() and DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD):
 		var keyboard_height = DisplayServer.virtual_keyboard_get_height()/2.0
 		keyboard_spacer.custom_minimum_size.y = keyboard_height
+
+
+# True on devices that actually have a soft keyboard (phones/tablets). Used to
+# decide whether to pop the web virtual keyboard and shift the menu up when the
+# room-code box is focused — desktop browsers with a hardware keyboard should
+# do neither.
+func _has_soft_keyboard() -> bool:
+	return DisplayServer.is_touchscreen_available()
 
 
 # When the room-code input is focused on mobile web the virtual keyboard
 # appears and covers the bottom half of the screen. Shift the whole
 # VBoxContainer up so the input stays visible, then restore it on blur.
+# On devices without a soft keyboard (desktop browsers) this is skipped
+# entirely and the experimental web virtual keyboard is never shown, since it
+# would steal focus and cover part of the page for no reason.
 const KEYBOARD_PUSH_Y: float = 350.0
 
 func _on_room_code_focus_gained() -> void:
+	if not _has_soft_keyboard():
+		return
+	DisplayServer.virtual_keyboard_show(room_code_input.text)
 	if OS.has_feature("web"):
 		_main_vbox.offset_top = _vbox_offset_top - KEYBOARD_PUSH_Y
 		# Keep the same container height so the layout doesn't reflow.
 		_main_vbox.offset_bottom = _vbox_offset_bottom - KEYBOARD_PUSH_Y
 
 func _on_room_code_focus_lost() -> void:
+	if not _has_soft_keyboard():
+		return
 	if OS.has_feature("web"):
 		_main_vbox.offset_top = _vbox_offset_top
 		_main_vbox.offset_bottom = _vbox_offset_bottom
