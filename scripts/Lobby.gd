@@ -3,6 +3,10 @@ extends Control
 const Enums = preload("res://scripts/Enums.gd")
 const LeaderboardUI = preload("res://scripts/LeaderboardUI.gd")
 
+# How long to wait for the server to answer a Create/Join Room request before
+# telling the user the server didn't respond (see _start_request_timeout).
+const REQUEST_TIMEOUT_SECONDS: float = 10.0
+
 @onready var room_code_input = $VBoxContainer/HBoxContainer/RoomCodeLineEdit
 @onready var create_button = $VBoxContainer/CreateButton
 @onready var join_button = $VBoxContainer/HBoxContainer/JoinButton
@@ -44,6 +48,9 @@ var device_id: String = ""
 var touchscreen_enabled: bool = true
 var _updating_local_players := false
 var _room_player_count: int = 1
+var _pending_request := false
+var _pending_request_action := ""
+var _pending_request_timer: SceneTreeTimer = null
 
 @onready var _main_vbox = $VBoxContainer
 var _vbox_offset_top: float
@@ -123,6 +130,7 @@ func _on_app_resume():
 		status_label.text = "Reconnecting..."
 
 func _on_connection_failed():
+	_clear_request_timeout()
 	status_label.text = "Connection failed. Tap to retry"
 	lost_connection = true
 	status_label.disabled = false
@@ -223,11 +231,35 @@ func _populate_leaderboard_rows(entries: Array) -> void:
 func _on_create_pressed():
 	is_creator = true
 	Network.rpc_create_room.rpc_id(1, int(level_spinbox.value), int(local_players_spinbox.value), device_id, Network.username)
+	_start_request_timeout("Create Room")
 
 func _on_join_pressed():
 	var code = room_code_input.text.strip_edges().to_lower()
 	is_creator = false
 	Network.rpc_join_room.rpc_id(1, code, int(local_players_spinbox.value), device_id, Network.username)
+	_start_request_timeout("Join Room")
+
+# Create/Join send an RPC to the game server and normally get an answer in
+# under a second. If the server accepts the connection but doesn't answer the
+# RPC (e.g. it's running an older build whose RPC signatures no longer match,
+# so Godot drops the call silently), the click appears to do nothing. Surface
+# that instead of leaving the user with a dead button.
+func _start_request_timeout(action: String) -> void:
+	_pending_request = true
+	_pending_request_action = action
+	if _pending_request_timer != null and _pending_request_timer.timeout.is_connected(_on_request_timeout):
+		_pending_request_timer.timeout.disconnect(_on_request_timeout)
+	_pending_request_timer = get_tree().create_timer(REQUEST_TIMEOUT_SECONDS)
+	_pending_request_timer.timeout.connect(_on_request_timeout)
+
+func _on_request_timeout() -> void:
+	if not _pending_request:
+		return
+	_pending_request = false
+	status_label.text = _pending_request_action + " not responding"
+
+func _clear_request_timeout() -> void:
+	_pending_request = false
 
 func _on_start_pressed():
 	Network.rpc_start_game.rpc_id(1)
@@ -270,6 +302,7 @@ func _hide_room_panel():
 	_update_username_warning()
 
 func _on_room_created(code: String):
+	_clear_request_timeout()
 	var my_local_count = int(local_players_spinbox.value)
 	_update_player_tiles(my_local_count)
 	code_label.text = code.to_upper()
@@ -280,6 +313,7 @@ func _on_room_created(code: String):
 	_update_username_warning()
 
 func _on_room_joined(player_count: int, code: String):
+	_clear_request_timeout()
 	code_label.text = code.to_upper()
 	local_players_spinbox.editable = true
 	_update_creator_ui()
