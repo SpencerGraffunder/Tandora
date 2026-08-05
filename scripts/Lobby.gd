@@ -256,7 +256,7 @@ func _on_request_timeout() -> void:
 	if not _pending_request:
 		return
 	_pending_request = false
-	status_label.text = _pending_request_action + " didn't get a response from the server. It may be running an old version - please update the server, then try again."
+	status_label.text = _pending_request_action + " not responding"
 
 func _clear_request_timeout() -> void:
 	_pending_request = false
