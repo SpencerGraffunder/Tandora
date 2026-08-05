@@ -147,11 +147,27 @@ func _process(_delta):
 
 
 # True on devices that actually have a soft keyboard (phones/tablets). Used to
-# decide whether to pop the web virtual keyboard and shift the menu up when the
-# room-code box is focused — desktop browsers with a hardware keyboard should
-# do neither.
+# decide whether to pop the virtual keyboard and shift the menu up when the
+# room-code box is focused — anything with a hardware keyboard (desktop
+# browsers, and desktop OSes even when a touchscreen is present) should do
+# neither: popping the OS touch keyboard there overlays the game and steals
+# clicks, which is the "buttons highlight but don't do anything" symptom.
 func _has_soft_keyboard() -> bool:
-	return DisplayServer.is_touchscreen_available()
+	if OS.has_feature("android") or OS.has_feature("ios"):
+		return true
+	if OS.has_feature("web"):
+		if not DisplayServer.is_touchscreen_available():
+			return false
+		# Touchscreen laptops also report is_touchscreen_available() == true,
+		# so check the primary pointer type (coarse = touch-primary device,
+		# i.e. an actual phone/tablet). Fall back to the touchscreen check for
+		# browsers without matchMedia support.
+		var coarse_pointer = JavaScriptBridge.eval(
+			"window.matchMedia && window.matchMedia('(pointer: coarse)').matches", true)
+		if coarse_pointer != null:
+			return bool(coarse_pointer)
+		return true
+	return false
 
 
 # When the room-code input is focused on mobile web the virtual keyboard
