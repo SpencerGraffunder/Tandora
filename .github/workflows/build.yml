@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Update version.cfg
         run: chmod +x ./update_version.sh && ./update_version.sh
@@ -47,7 +47,7 @@ jobs:
           godot --headless --export-release "${{ env.EXPORT_PRESET_LINUX }}" "build_linux/tandora.x86_64"
 
       - name: Upload Linux artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: tandora-linux-server
           retention-days: 30
@@ -70,12 +70,12 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Download Linux artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: tandora-linux-server
           path: build_linux/
@@ -98,7 +98,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Update version.cfg
         run: chmod +x ./update_version.sh && ./update_version.sh
