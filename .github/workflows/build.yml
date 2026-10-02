@@ -63,6 +63,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    # Serialize release publishes so two back-to-back master builds can't race
+    # and have the older binary win the 'latest' tag.
+    concurrency:
+      group: tandora-latest-release
+      cancel-in-progress: false
     steps:
       - name: Checkout
         uses: actions/checkout@v4
