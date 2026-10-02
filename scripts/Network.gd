@@ -141,10 +141,22 @@ func _limit_entries(entries: Array, limit: int) -> Array:
 func _sanitize_username(value: String) -> String:
 	var out := ""
 	for i in range(value.length()):
-		var ch = value[i]
-		if ch.unicode_at(0) < 32:
+		var cp: int = value.unicode_at(i)
+		if cp < 32:
 			continue
-		out += ch
+		if cp >= 0x7F and cp <= 0x9F:
+			continue  # DEL + C1 control (can render as tofu)
+		if cp >= 0x200B and cp <= 0x200F:
+			continue  # zero-width / format
+		if cp >= 0x202A and cp <= 0x202E:
+			continue  # bidi controls
+		if cp >= 0x2060 and cp <= 0x206F:
+			continue  # invisible operators
+		if cp == 0xFEFF or cp == 0x00AD:
+			continue  # BOM / soft hyphen
+		if cp >= 0xE000 and cp <= 0xF8FF:
+			continue  # private use area
+		out += value[i]
 	return out.strip_edges().left(16)
 
 func _load_leaderboard_from_disk(player_count: int, limit: int = 5) -> Array:
