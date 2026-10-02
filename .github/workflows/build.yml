@@ -13,13 +13,24 @@ env:
 
 jobs:
   # ── Build Linux server binary ─────────────────────────────────────────────
+  # On master, also publishes it as the 'latest' release — that release is
+  # what the Unraid box auto-deploys (it polls it, no auth needed).
   build-linux:
     name: Build Linux Server
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # Serialize release publishes so two back-to-back master builds can't race
+    # and have the older binary win the 'latest' tag.
+    concurrency:
+      group: tandora-latest-release
+      cancel-in-progress: false
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Update version.cfg
         run: chmod +x ./update_version.sh && ./update_version.sh
@@ -46,41 +57,8 @@ jobs:
           mkdir -p build_linux
           godot --headless --export-release "${{ env.EXPORT_PRESET_LINUX }}" "build_linux/tandora.x86_64"
 
-      - name: Upload Linux artifact
-        uses: actions/upload-artifact@v5
-        with:
-          name: tandora-linux-server
-          retention-days: 30
-          path: build_linux/
-
-  # ── Publish Linux server binary as the 'latest' release ───────────────────
-  # The Unraid box polls this release (no auth needed — public repo) and
-  # auto-deploys it. See /mnt/user/appdata/tandora/update-tandora.sh there.
-  release-linux:
-    name: Publish Server Release
-    needs: build-linux
-    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    # Serialize release publishes so two back-to-back master builds can't race
-    # and have the older binary win the 'latest' tag.
-    concurrency:
-      group: tandora-latest-release
-      cancel-in-progress: false
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Download Linux artifact
-        uses: actions/download-artifact@v5
-        with:
-          name: tandora-linux-server
-          path: build_linux/
-
       - name: Publish 'latest' release
+        if: github.ref == 'refs/heads/master' && github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -134,7 +112,7 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git clone https://x-access-token:${{ secrets.PAGES_DEPLOY_TOKEN }}@github.com/NuclearQuads/nuclearquads.github.io.git pages_repo
+          git clone https://x-access-token:*** secrets.PAGES_DEPLOY_TOKEN }}@github.com/NuclearQuads/nuclearquads.github.io.git pages_repo
           rm -rf pages_repo/tandora
           cp -r build_web pages_repo/tandora
           # Remove any .nojekyll that Godot added inside the tandora folder
