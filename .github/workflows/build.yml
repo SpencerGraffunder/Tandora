@@ -53,6 +53,34 @@ jobs:
           retention-days: 30
           path: build_linux/
 
+  # ── Publish Linux server binary as the 'latest' release ───────────────────
+  # The Unraid box polls this release (no auth needed — public repo) and
+  # auto-deploys it. See /mnt/user/appdata/tandora/update-tandora.sh there.
+  release-linux:
+    name: Publish Server Release
+    needs: build-linux
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tandora-linux-server
+          path: build_linux/
+
+      - name: Publish 'latest' release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA="${{ github.sha }}"
+          # Replace the previous 'latest' release (name+tag) with this build.
+          gh release delete latest --cleanup-tag 2>/dev/null || true
+          gh release create latest build_linux/tandora.x86_64 \
+            --title "Tandora server ${SHA:0:8}" \
+            --notes "Auto-published from commit ${SHA:0:8} on master."
+
   # ── Build Web export ──────────────────────────────────────────────────────
   build-web:
     name: Build Web Export
