@@ -112,7 +112,7 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git clone https://x-access-token:*** secrets.PAGES_DEPLOY_TOKEN }}@github.com/NuclearQuads/nuclearquads.github.io.git pages_repo
+          git clone https://x-access-token:{{ secrets.PAGES_DEPLOY_TOKEN }}@github.com/NuclearQuads/nuclearquads.github.io.git pages_repo
           rm -rf pages_repo/tandora
           cp -r build_web pages_repo/tandora
           # Remove any .nojekyll that Godot added inside the tandora folder
