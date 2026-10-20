@@ -18,7 +18,10 @@ var _captured: Dictionary = {}
 
 
 func _init() -> void:
-	tmp_dir = "/tmp/tandora-store-test-%d" % Time.get_ticks_msec()
+	# Unique per run: ticks_msec alone can collide on fast re-runs in some
+	# environments (container clocks), and a reused dir makes the flow tests
+	# fail against stale state. ticks_usec never collides between runs.
+	tmp_dir = "/tmp/tandora-store-test-%d-%06d" % [Time.get_ticks_msec(), Time.get_ticks_usec() & 0xFFFFFF]
 	var script: GDScript = load("res://scripts/AccountService.gd")
 	service = script.new()
 	DirAccess.make_dir_recursive_absolute(tmp_dir)

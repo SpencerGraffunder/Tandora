@@ -29,6 +29,10 @@ signal leaderboard_updated(player_count, entries)
 signal local_players_updated(own_count)
 signal room_creator_changed(creator_id)
 signal account_response(request_id, ok, error, data)
+# Room create/join were rejected (reason is "NOT_AUTHENTICATED" for the
+# account gate; see rpc_create_failed / rpc_join_failed).
+signal create_failed(reason)
+signal join_failed(reason)
 
 func _ready():
 	_parse_port_arg()
@@ -305,6 +309,22 @@ func rpc_leaderboard_response(player_count: int, entries: Array):
 #
 # error codes (ok=false): INVALID_EMAIL, WEAK_PASSWORD, EMAIL_TAKEN,
 # INVALID_CREDENTIALS, INVALID_SESSION, RATE_LIMITED, UNKNOWN_ACTION
+#
+# PROTECTED GAME ACTIONS: creating and joining a room require a valid
+# session token (the login response's token) as the session_token argument
+# to rpc_create_room / rpc_join_room. The server rejects without a valid
+# session with rpc_create_failed("NOT_AUTHENTICATED") or
+# rpc_join_failed("NOT_AUTHENTICATED"). Everything else (start game,
+# player input, leaving) sits behind room membership, which in turn sits
+# behind this gate. See docs/accounts.md.
+
+## Room create/join auth check. validate_session also slides the session's
+## 30-day expiry, so active players stay logged in.
+func _session_ok(token: String) -> bool:
+	if token == "":
+		return false
+	var r: Dictionary = Accounts.validate_session(token)
+	return bool(r.get("ok", false))
 
 @rpc("any_peer", "call_remote", "reliable")
 func rpc_account_request(request_id: int, action: String, email: String, secret: String):
@@ -325,10 +345,15 @@ func rpc_account_response(request_id: int, ok: bool, error: String, data: Dictio
 # ---- CLIENT -> SERVER RPCs ----
 
 @rpc("any_peer", "call_remote", "reliable")
-func rpc_create_room(level: int, local_count: int = 1, device_id: String = "", host_username: String = ""):
+func rpc_create_room(level: int, local_count: int = 1, device_id: String = "", host_username: String = "", session_token: String = ""):
 	if not is_dedicated_server:
 		return
 	var sender = multiplayer.get_remote_sender_id()
+	# Protected action: only a logged-in account may create a room.
+	if not _session_ok(session_token):
+		print("[SERVER] rpc_create_room: peer ", sender, " rejected — no valid session")
+		rpc_create_failed.rpc_id(sender, "NOT_AUTHENTICATED")
+		return
 	print_verbose("[SERVER] rpc_create_room: Peer ", sender, " creating room with level ", level, " local_players=", local_count, " device_id=", device_id, " username=", host_username)
 	var code = RoomManager.create_room(sender, level, local_count, host_username)
 	# Store device_id for reconnect logic
@@ -339,10 +364,17 @@ func rpc_create_room(level: int, local_count: int = 1, device_id: String = "", h
 	rpc_room_created.rpc_id(sender, code)
 
 @rpc("any_peer", "call_remote", "reliable")
-func rpc_join_room(code: String, local_count: int = 1, device_id: String = "", peer_username: String = ""):
+func rpc_join_room(code: String, local_count: int = 1, device_id: String = "", peer_username: String = "", session_token: String = ""):
 	if not is_dedicated_server:
 		return
 	var sender = multiplayer.get_remote_sender_id()
+	# Protected action: only a logged-in account may join a room. Checked
+	# before the device-reconnect logic so a stale token can never ride an
+	# old device id into the room.
+	if not _session_ok(session_token):
+		print("[SERVER] rpc_join_room: peer ", sender, " rejected — no valid session")
+		rpc_join_failed.rpc_id(sender, "NOT_AUTHENTICATED")
+		return
 	print_verbose("[SERVER] rpc_join_room: Peer ", sender, " trying to join room ", code, " local_players=", local_count, " device_id=", device_id)
 	# Reconnect logic: if device_id matches a previous player, reassign
 	if room_device_ids.has(code) and room_device_ids[code].has(device_id):
@@ -491,8 +523,18 @@ func rpc_creator_changed(creator_id: int):
 	room_creator_changed.emit(creator_id)
 
 @rpc("authority", "call_remote", "reliable")
-func rpc_join_failed():
-	connection_failed.emit()
+func rpc_join_failed(reason: String = ""):
+	# reason "" is the pre-auth legacy shape: keep the old behavior.
+	if reason == "":
+		connection_failed.emit()
+		return
+	print_verbose("[CLIENT] rpc_join_failed: reason=", reason)
+	join_failed.emit(reason)
+
+@rpc("authority", "call_remote", "reliable")
+func rpc_create_failed(reason: String):
+	print_verbose("[CLIENT] rpc_create_failed: reason=", reason)
+	create_failed.emit(reason)
 
 @rpc("authority", "call_remote", "reliable")
 func rpc_game_starting(player_number: int, player_count: int, local_count: int, level: int):

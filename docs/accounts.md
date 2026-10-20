@@ -84,6 +84,66 @@ on the client when the server replies.
 `INVALID_EMAIL` · `WEAK_PASSWORD` · `EMAIL_TAKEN` · `INVALID_CREDENTIALS` ·
 `INVALID_SESSION` · `RATE_LIMITED` · `UNKNOWN_ACTION`
 
+The **client** `Session` autoload additionally reports transport-level
+errors that never come from the server: `NOT_CONNECTED` (no peer) and
+`TIMEOUT` (no response in 15 s).
+
+## Client session (`Session` autoload)
+
+`scripts/Session.gd` is the only place that talks the account protocol on
+the client:
+
+- `create_account(email, password)` / `login(email, password)` /
+  `logout()` / `validate()` — one awaitable round-trip each, returning
+  `{ok, error, data}`. `login` stores the returned session and emits
+  `session_changed`.
+- **Persistence**: `user://session.json` — `schema_version` envelope with
+  `token`, `user_id`, `email`, `expires_at`, written atomically
+  (tmp + rename). The token is the **only** credential ever stored on the
+  client; no password is kept. The file is deleted on logout and on a
+  malformed read.
+- **Restore semantics**: a restored session is *optimistic*
+  (`is_logged_in = true`) until `validate()` confirms it. The Lobby calls
+  `validate()` after every successful connection. `validate()` clears the
+  session only on a definitive server rejection — `NOT_CONNECTED`/`TIMEOUT`
+  are inconclusive and keep the session (a slow first connection must not
+  nuke a good login).
+
+## UI (`scenes/AccountPanel.tscn`, `scripts/AccountPanel.gd`)
+
+- Opened from the **Sign in / Signed in** button in the Lobby
+  (`Lobby.gd` keeps the button label in sync via `Session.session_changed`).
+- Two modes — **Log in** and **Sign up** (sign up adds a confirm-password
+  field). After a successful `create` the panel immediately `login`s, so
+  the user lands signed in.
+- Every server error code maps to a player-facing message; transport errors
+  say so explicitly. The panel never shows raw error codes.
+- While signed in the form is replaced by the identity label + **Log out**
+  button. Logout is best-effort: the local session is always cleared (the
+  server-side session then lives out its sliding TTL if unreachable).
+
+## Protected game actions
+
+Room **create** and **join** are the protected game actions:
+
+- `Network.rpc_create_room(level, local_count, device_id, host_username,
+  session_token)` and `Network.rpc_join_room(code, local_count, device_id,
+  peer_username, session_token)` now take a **session token** (the login
+  response's `token`) as their last argument.
+- The server (`Network._session_ok`) requires a valid session for both —
+  a missing/invalid/expired token is rejected with
+  `rpc_create_failed("NOT_AUTHENTICATED")` /
+  `rpc_join_failed("NOT_AUTHENTICATED")`. `validate` is used for the check,
+  which also slides the session's 30-day expiry, so active players stay
+  logged in.
+- Everything else (start game, player input, leaving) sits behind room
+  membership, which in turn sits behind this gate.
+- Client UX (`Lobby.gd`): create/join while unsigned in opens the account
+  panel instead of sending a doomed request; a `NOT_AUTHENTICATED`
+  rejection (e.g. session revoked on another device while connected)
+  re-opens it with an explanation. `rpc_join_failed()` with an empty reason
+  keeps the legacy "connection problem" behavior for old servers.
+
 ## Credentials & storage
 
 - **Password hashing: PBKDF2-HMAC-SHA256**, 210,000 iterations, per-user
@@ -124,8 +184,12 @@ bash tests/run_accounts_tests.sh
    independently in Python), account flows, rate limiting, persistence,
    v0→v1 migration, and the "no plaintext on disk" invariants.
 2. Integration — a real dedicated server on `:7791` plus a WebSocket
-   client scene exercising the full protocol.
-3. Storage/logging invariants — hash format, schema envelopes, and the
+   client scene exercising the full account protocol.
+3. Session/UI integration — the same live server plus a second client
+   exercising the client `Session` autoload (create/login/validate/logout
+   and `user://session.json` persistence) and the protected room
+   create/join gate (rejected without a valid session, accepted with one).
+4. Storage/logging invariants — hash format, schema envelopes, and the
    test password absent from both the store files and the server log.
 
 Exit 0 only if everything passes.

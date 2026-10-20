@@ -92,6 +92,22 @@ if [ $CLIENT_RC -ne 0 ]; then
 	fail "integration client (rc=$CLIENT_RC, see $CLIENT_LOG)"
 fi
 
+# UI-task integration: the Session autoload (create/login/validate/logout +
+# user://session.json persistence) and the protected room create/join gate,
+# against the same live server.
+UINET_LOG="$TMP/uinet.log"
+"$GODOT" --headless res://tests/test_account_session_client.tscn \
+	-- --connect_port=$SERVER_PORT --port=$((CLIENT_STRAY_PORT + 1)) --accounts_dir="$TMP/uinet_data" \
+	> "$UINET_LOG" 2>&1
+UINET_RC=$?
+grep -E "SESSION_UI_TEST (PASSED|FAILED)|FATAL|ok  -|FAIL" "$UINET_LOG"
+if [ $UINET_RC -ne 0 ]; then
+	fail "session UI client (rc=$UINET_RC, see $UINET_LOG)"
+fi
+if grep -qF "$TEST_PASSWORD" "$UINET_LOG"; then
+	fail "plaintext test password found in session UI client log"
+fi
+
 # Stop the server (SIGINT => clean shutdown so buffered logs are flushed).
 if kill -0 "$SERVER_PID" 2>/dev/null; then
 	kill -INT "$SERVER_PID"
