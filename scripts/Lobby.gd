@@ -31,6 +31,8 @@ const REQUEST_TIMEOUT_SECONDS: float = 10.0
 @onready var username_lineedit = $SettingsPanel/VBoxContainer/HBoxContainer4/UsernameLineEdit
 @onready var username_warning_label = $RoomPanel/VBoxContainer/UsernameWarningLabel
 @onready var version_label = $HBoxContainer/VersionLabel
+@onready var account_button = $AccountButton
+@onready var account_panel = $AccountPanel
 @onready var player_tiles = [
 	$RoomPanel/VBoxContainer/PlayerList/P1,
 	$RoomPanel/VBoxContainer/PlayerList/P2,
@@ -112,6 +114,11 @@ func _ready():
 	Network.leaderboard_updated.connect(_on_leaderboard_updated)
 	Network.local_players_updated.connect(_on_local_players_updated)
 	Network.room_creator_changed.connect(_on_creator_changed)
+	Network.create_failed.connect(_on_create_failed)
+	Network.join_failed.connect(_on_join_failed)
+	account_button.pressed.connect(_on_account_button_pressed)
+	Session.session_changed.connect(_on_session_changed)
+	_update_account_button()
 
 	# Cache device ID (cast as Node since compiler doesn't recognize autoload)
 	device_id = get_node("/root/DeviceID").get_device_id()
@@ -141,6 +148,72 @@ func _on_connected():
 	status_label.disabled = true
 	create_button.disabled = false
 	join_button.disabled = false
+	# A session restored from disk is only trusted after the server says so.
+	_verify_saved_session()
+
+# Confirms the stored session (if any) against the server. Fire-and-forget:
+# the Session.session_changed signal updates the button either way.
+func _verify_saved_session() -> void:
+	if not Session.has_saved_session():
+		return
+	# Fire-and-forget: session_changed updates the button either way.
+	var _r: Dictionary = await Session.validate()
+
+func _on_session_changed() -> void:
+	_update_account_button()
+
+func _update_account_button() -> void:
+	account_button.text = "Signed in" if Session.is_logged_in else "Sign in"
+
+func _on_account_button_pressed() -> void:
+	account_panel.open()
+
+# Room create/join are protected game actions: they require a logged-in
+# account (server-enforced — see Network._session_ok). If the local session
+# is missing, point the player at the account panel instead of sending a
+# request we know the server will reject.
+func _require_login(action: String) -> bool:
+	if Session.is_logged_in:
+		return true
+	status_label.text = "Sign in to " + action
+	account_panel.open("Sign in to " + action + ".")
+	return false
+
+# The server rejected a room create (currently only for a bad/missing
+# session — e.g. the user logged out on another device, or the session
+# expired while this client was connected).
+func _on_create_failed(reason: String) -> void:
+	_clear_request_timeout()
+	if reason == "NOT_AUTHENTICATED":
+		status_label.text = "Sign in to create rooms"
+		account_panel.open("Your session is no longer valid — sign in to create a room.")
+	else:
+		status_label.text = "Create room failed"
+
+# The server rejected a room join. Non-auth reasons keep the pre-existing
+# "connection problem" UX.
+func _on_join_failed(reason: String) -> void:
+	_clear_request_timeout()
+	if reason == "NOT_AUTHENTICATED":
+		status_label.text = "Sign in to join rooms"
+		account_panel.open("Your session is no longer valid — sign in to join a room.")
+	else:
+		_on_connection_failed()
+
+func _on_create_pressed():
+	if not _require_login("create a room"):
+		return
+	is_creator = true
+	Network.rpc_create_room.rpc_id(1, int(level_spinbox.value), int(local_players_spinbox.value), device_id, Network.username, Session.session_token)
+	_start_request_timeout("Create Room")
+
+func _on_join_pressed():
+	if not _require_login("join a room"):
+		return
+	var code = room_code_input.text.strip_edges().to_lower()
+	is_creator = false
+	Network.rpc_join_room.rpc_id(1, code, int(local_players_spinbox.value), device_id, Network.username, Session.session_token)
+	_start_request_timeout("Join Room")
 
 func _on_reconnect_pressed():
 	if lost_connection:
@@ -227,17 +300,6 @@ func _populate_leaderboard_rows(entries: Array) -> void:
 		return
 	for i in range(entries.size()):
 		room_leaderboard_container.add_child(LeaderboardUI.build_row(i, entries[i]))
-
-func _on_create_pressed():
-	is_creator = true
-	Network.rpc_create_room.rpc_id(1, int(level_spinbox.value), int(local_players_spinbox.value), device_id, Network.username)
-	_start_request_timeout("Create Room")
-
-func _on_join_pressed():
-	var code = room_code_input.text.strip_edges().to_lower()
-	is_creator = false
-	Network.rpc_join_room.rpc_id(1, code, int(local_players_spinbox.value), device_id, Network.username)
-	_start_request_timeout("Join Room")
 
 # Create/Join send an RPC to the game server and normally get an answer in
 # under a second. If the server accepts the connection but doesn't answer the

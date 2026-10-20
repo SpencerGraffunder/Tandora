@@ -14,6 +14,7 @@
 [ext_resource type="Texture2D" uid="uid://4casnxyrx8xe" path="res://assets/tile_7.png" id="11_5av17"]
 [ext_resource type="Texture2D" uid="uid://7trcqxg8juxr" path="res://assets/tile_8.png" id="12_yy2xu"]
 [ext_resource type="Texture2D" uid="uid://c7unbrwguuqx1" path="res://assets/gear_icon.png" id="13_gear"]
+[ext_resource type="PackedScene" uid="uid://57q6wber6a" path="res://scenes/AccountPanel.tscn" id="14_apnl"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_ras1x"]
 font = ExtResource("1_cdhm0")
@@ -61,6 +62,15 @@ offset_right = 120.0
 offset_bottom = 100.0
 theme_override_font_sizes/font_size = 45
 text = "?"
+
+[node name="AccountButton" type="Button" parent="." unique_id=3088500101]
+layout_mode = 1
+offset_left = 170.0
+offset_top = 40.0
+offset_right = 370.0
+offset_bottom = 100.0
+theme_override_font_sizes/font_size = 30
+text = "Sign in"
 
 [node name="VBoxContainer" type="VBoxContainer" parent="." unique_id=720685230]
 layout_mode = 1
@@ -440,3 +450,6 @@ offset_right = 120.0
 offset_bottom = 100.0
 theme_override_font_sizes/font_size = 30
 text = "X"
+
+[node name="AccountPanel" parent="." unique_id=3088500102 instance=ExtResource("14_apnl")]
+layout_mode = 1
