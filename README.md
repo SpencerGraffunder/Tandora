@@ -1,5 +1,12 @@
 Play the classic game WITH your friends! Place blocks and clear lines on a single board. Keeps the classic pieces and movement with a unique multiplayer mechanic. Work together to reach the top of the leaderboard. 
 
+# Where to play
+
+- **Web:** https://nuclearquads.com/tandora/ (also https://nuclearquads.github.io/tandora/)
+  - Built and deployed automatically by CI on every push to `master` (Godot Web export → GitHub Pages `tandora/` folder). The deployed `index.html` carries a `<!-- build: <sha> -->` marker so you can confirm which commit is live.
+  - The web client connects to the hosted server automatically; no setup needed.
+- **Desktop/iOS:** see the `latest` GitHub release (auto-published from `master` by CI).
+
 Features:
 - 1-8 players
 - Multiple local players per device (keyboards + controllers)
