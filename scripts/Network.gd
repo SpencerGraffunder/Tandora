@@ -1,6 +1,7 @@
 extends Node
 
 const PORT = 7777
+var port: int = PORT  # overridable via --port=N (tests / side-by-side instances)
 var SERVER_ADDRESS: String
 var USE_WSS: bool
 
@@ -27,8 +28,10 @@ signal room_updated(player_count, starting_level)
 signal leaderboard_updated(player_count, entries)
 signal local_players_updated(own_count)
 signal room_creator_changed(creator_id)
+signal account_response(request_id, ok, error, data)
 
 func _ready():
+	_parse_port_arg()
 	_set_server_address_and_protocol()
 	if DisplayServer.get_name() == "headless":
 		is_dedicated_server = true
@@ -49,6 +52,8 @@ func _ready():
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
 	multiplayer.connection_failed.connect(_on_connection_failed)
+	# Account responses: the service emits, we address the RPC at the peer.
+	Accounts.response_ready.connect(_on_accounts_response)
 
 func _set_server_address_and_protocol():
 	if OS.has_feature("local"):
@@ -61,6 +66,21 @@ func _set_server_address_and_protocol():
 		USE_WSS = true
 		print_verbose("[DEBUG] Using REMOTE server address:", SERVER_ADDRESS, "USE_WSS:", USE_WSS)
 
+func _parse_port_arg() -> void:
+	for arg in _app_args():
+		if arg.begins_with("--port="):
+			var p: int = arg.get_slice("=", 1).to_int()
+			if p > 0 and p < 65536:
+				port = p
+
+# All app-visible arguments, wherever they sit relative to the "--" separator.
+func _app_args() -> Array:
+	var out: Array = OS.get_cmdline_args()
+	for arg in OS.get_cmdline_user_args():
+		if not out.has(arg):
+			out.append(arg)
+	return out
+
 @rpc("any_peer", "call_remote", "reliable")
 func rpc_request_full_sync():
 	if not is_dedicated_server:
@@ -71,13 +91,13 @@ func rpc_request_full_sync():
 
 func start_dedicated_server():
 	var peer = WebSocketMultiplayerPeer.new()
-	var error = peer.create_server(PORT)
+	var error = peer.create_server(port)
 	if error != OK:
-		printerr("[SERVER] Failed to start WebSocket server on port ", PORT, ": error code ", error)
+		printerr("[SERVER] Failed to start WebSocket server on port ", port, ": error code ", error)
 		return
 	multiplayer.multiplayer_peer = peer
-	print_verbose("[SERVER] WebSocket server started on port ", PORT)
-	print("[SERVER] Ready to host at ws://0.0.0.0:", PORT)
+	print_verbose("[SERVER] WebSocket server started on port ", port)
+	print("[SERVER] Ready to host at ws://0.0.0.0:", port)
 
 func connect_to_server():
 	var peer = WebSocketMultiplayerPeer.new()
@@ -104,6 +124,7 @@ func _on_peer_disconnected(id):
 	print_verbose("[SERVER/CLIENT] Peer disconnected: ", id, " (is_dedicated_server=", is_dedicated_server, ")")
 	if is_dedicated_server:
 		_remove_peer_from_room_and_notify(id)
+		Accounts.peer_left(id)
 	players.erase(id)
 
 # Removes a peer from its room and, if the room was still in the lobby, tells
@@ -268,6 +289,38 @@ func rpc_request_leaderboard(player_count: int, limit: int):
 func rpc_leaderboard_response(player_count: int, entries: Array):
 	leaderboard_cache[player_count] = entries
 	leaderboard_updated.emit(player_count, entries)
+
+# ---- ACCOUNT RPCs (see docs/accounts.md) ----
+#
+# One request/response pair covers all four account "endpoints". The client
+# picks an action and passes a request_id it will match the response on.
+# Godot RPCs carry no return values, so the answer arrives as a separate
+# server->client RPC addressed to the requesting peer.
+#
+#   action   secret means     success data
+#   create   password         {user_id, email}
+#   login    password         {user_id, email, token, expires_at}
+#   logout   session token    {}
+#   validate session token    {user_id, email}
+#
+# error codes (ok=false): INVALID_EMAIL, WEAK_PASSWORD, EMAIL_TAKEN,
+# INVALID_CREDENTIALS, INVALID_SESSION, RATE_LIMITED, UNKNOWN_ACTION
+
+@rpc("any_peer", "call_remote", "reliable")
+func rpc_account_request(request_id: int, action: String, email: String, secret: String):
+	if not is_dedicated_server:
+		return
+	var sender = multiplayer.get_remote_sender_id()
+	print_verbose("[SERVER] rpc_account_request: peer ", sender, " action=", action, " email=", email)
+	Accounts.handle_request(sender, request_id, action, email, secret)
+
+func _on_accounts_response(sender: int, request_id: int, ok: bool, error: String, data: Dictionary) -> void:
+	rpc_account_response.rpc_id(sender, request_id, ok, error, data)
+
+@rpc("authority", "call_remote", "reliable")
+func rpc_account_response(request_id: int, ok: bool, error: String, data: Dictionary):
+	print_verbose("[CLIENT] account_response: id=", request_id, " ok=", ok, " error=", error)
+	account_response.emit(request_id, ok, error, data)
 
 # ---- CLIENT -> SERVER RPCs ----
 

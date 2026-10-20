@@ -18,6 +18,7 @@ config/icon="uid://bf0qnsiarwx6r"
 
 [autoload]
 
+Accounts="*res://scripts/AccountService.gd"
 Network="*uid://qxxkd3v7yj7j"
 RoomManager="*uid://ci52dx5b8qf8p"
 DeviceID="*res://scripts/DeviceID.gd"
