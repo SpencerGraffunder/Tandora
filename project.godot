@@ -19,7 +19,9 @@ config/icon="uid://bf0qnsiarwx6r"
 [autoload]
 
 SoundManager="*res://scripts/SoundManager.gd"
+Accounts="*res://scripts/AccountService.gd"
 Network="*uid://qxxkd3v7yj7j"
+Session="*res://scripts/Session.gd"
 RoomManager="*uid://ci52dx5b8qf8p"
 DeviceID="*res://scripts/DeviceID.gd"
 Version="*res://scripts/Version.gd"
