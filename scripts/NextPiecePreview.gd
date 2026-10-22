@@ -39,7 +39,13 @@ func _draw():
 		max_y = maxi(max_y, loc.y)
 	var piece_w = max_x - min_x + 1
 	var piece_h = max_y - min_y + 1
-	var tile_size = board_tile_size if board_tile_size > 0 else minf(size.x / piece_w, size.y / piece_h) * 0.8
+	var fit = minf(size.x / piece_w, size.y / piece_h) * 0.8
+	# Match the board's tile size, but never overflow the preview box itself —
+	# with touchscreen controls off the board (and its tiles) can grow much
+	# larger than the header strip the previews live in (issue #12).
+	var tile_size = fit
+	if board_tile_size > 0:
+		tile_size = minf(board_tile_size, fit)
 	var offset = Vector2(
 		(size.x - tile_size * piece_w) / 2,
 		(size.y - tile_size * piece_h) / 2

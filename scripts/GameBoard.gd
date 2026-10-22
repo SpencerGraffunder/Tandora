@@ -3,6 +3,10 @@ extends ColorRect
 const Enums = preload("res://scripts/Enums.gd")
 const PieceScript = preload("res://scripts/Piece.gd")
 
+# Emitted when the board rect changes enough that tiles are re-scaled, so
+# dependent widgets (next-piece previews) can match the new tile size.
+signal tile_size_changed(tile_size: float)
+
 var cols: int
 var tile_size: float
 var board: Array = []
@@ -14,11 +18,7 @@ var game_over_progress: float = 0.0
 
 func init_board(player_count: int):
 	cols = (4 * player_count) + 6
-	tile_size = min(size.x / cols, size.y / Enums.VISIBLE_ROWS)
-	offset = Vector2(
-		(size.x - (tile_size * cols)) / 2,
-		(size.y - (tile_size * Enums.VISIBLE_ROWS)) / 2
-	)
+	_layout_tiles()
 	board = []
 	for r in range(Enums.TOTAL_ROWS):
 		var row = []
@@ -26,6 +26,32 @@ func init_board(player_count: int):
 			row.append(Enums.TileType.BLANK)
 		board.append(row)
 	queue_redraw()
+
+# Recompute tile_size/offset from the current rect. The grid is scaled by
+# min(width/cols, height/VISIBLE_ROWS) and centered, so the board expands to
+# fill whatever space it is given until one axis runs out — wide screens end
+# up width-limited, exactly as issue #12 anticipates.
+# Returns true (and emits tile_size_changed) only if the tile size moved.
+func _layout_tiles() -> bool:
+	if cols <= 0 or size.x <= 0.0 or size.y <= 0.0:
+		return false
+	var new_tile_size := minf(size.x / cols, size.y / Enums.VISIBLE_ROWS)
+	if new_tile_size <= 0.0 or is_equal_approx(new_tile_size, tile_size):
+		return false
+	tile_size = new_tile_size
+	offset = Vector2(
+		(size.x - (tile_size * cols)) / 2,
+		(size.y - (tile_size * Enums.VISIBLE_ROWS)) / 2
+	)
+	tile_size_changed.emit(tile_size)
+	return true
+
+func _notification(what):
+	# Fires whenever our anchored rect changes — e.g. Main expands us into the
+	# space the touch controls vacated, or the window/viewport is resized.
+	if what == NOTIFICATION_RESIZED:
+		if _layout_tiles():
+			queue_redraw()
 
 func _ready():
 	load_textures()
