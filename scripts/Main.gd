@@ -49,6 +49,10 @@ func _ready():
 		else:
 			previews[i].visible = false
 
+	# Keep previews in sync if the board re-scales later (touch controls
+	# toggled, window resized — see issue #12).
+	game_board.tile_size_changed.connect(_on_board_tile_size_changed)
+
 	# Seed previous input state so no phantom presses fire on the first frame.
 	_prev_input.resize(local_player_count)
 	for i in range(local_player_count):
@@ -312,7 +316,16 @@ func _notification(what):
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
 		get_tree().quit()
 
+func _on_board_tile_size_changed(new_tile_size: float) -> void:
+	for preview in previews:
+		preview.board_tile_size = new_tile_size
+		preview.queue_redraw()
+
 func _update_touch_buttons():
 	var show_touch_buttons = Network.touchscreen_enabled
 	# Hide/show the entire touch button area
 	player1_area.visible = show_touch_buttons
+	# When the controls are hidden the board claims their whole strip (down to
+	# the bottom of the screen); GameBoard re-scales itself on the resulting
+	# resize notification. See issue #12.
+	game_board.anchor_bottom = 0.6 if show_touch_buttons else 1.0
