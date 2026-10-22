@@ -3,6 +3,7 @@ extends Control
 const GameLogicScript = preload("res://scripts/GameLogic.gd")
 const Enums = preload("res://scripts/Enums.gd")
 const PieceScript = preload("res://scripts/Piece.gd")
+const SoundCuesScript = preload("res://scripts/SoundCues.gd")
 
 @onready var game_board = $GameBoard
 @onready var preview_p1 = $VBoxContainer/NextPieceContainer/NextPiecePreviewP1
@@ -30,6 +31,12 @@ var _prev_input: Array = []
 var _last_received_seq: int = -1
 var _waiting_for_full_sync: bool = false
 var game_over_animation_active: bool = false
+
+# Sound cue state (issue #15): previous synced snapshot the cues diff against,
+# and pause-transition tracking for the pause/resume blips.
+var _sound_baseline: Dictionary = {}
+var _sound_prev_paused: bool = false
+var _sound_paused_seen: bool = false
 
 
 func _ready():
@@ -206,6 +213,9 @@ func _apply_full_snapshot(buf: StreamPeerBuffer) -> void:
 
 	game_board.set_clearing_rows(clearing_rows)
 	_apply_players_state(players_state)
+	# Full snapshots only re-arm the sound baseline: after a resync we must
+	# not fire a burst of phantom cues for state that already happened.
+	_sync_sound_baseline(int(level), game_over_progress > 0.0, clearing_rows, players_state, false)
 
 func _apply_delta(buf: StreamPeerBuffer) -> void:
 	var score = buf.get_u32()
@@ -247,6 +257,18 @@ func _apply_delta(buf: StreamPeerBuffer) -> void:
 
 	game_board.set_clearing_rows(clearing_rows)
 	_apply_players_state(players_state)
+	_sync_sound_baseline(int(level), game_over_progress > 0.0, clearing_rows, players_state, true)
+
+# Diff the just-applied state against the previous sync and play the sound
+# effects it implies (issue #15). Runs on every peer — the host is in
+# room.peers too — so no protocol change is needed for everyone to hear
+# the same cues.
+func _sync_sound_baseline(level: int, game_over_active: bool, clearing_rows: Array, players_state: Array, play_cues: bool) -> void:
+	var cur = SoundCuesScript.snapshot(level, game_over_active, clearing_rows, players_state)
+	if play_cues and not _sound_baseline.is_empty():
+		for cue in SoundCuesScript.detect(_sound_baseline, cur):
+			SoundManager.play_cue(cue)
+	_sound_baseline = cur
 
 func _read_player_from_buffer(buf: StreamPeerBuffer) -> Dictionary:
 	var pd = {}
@@ -286,6 +308,12 @@ func _on_pause_pressed():
 	_send_local_input(0, "PAUSE", true)
 
 func set_paused(p: bool) -> void:
+	# Blip only on an actual transition, and skip the first call that just
+	# establishes the initial state (issue #15).
+	if _sound_paused_seen and p != _sound_prev_paused:
+		SoundManager.play("pause" if p else "resume")
+	_sound_prev_paused = p
+	_sound_paused_seen = true
 	pause_overlay.visible = p
 	$Player1Area/VBoxContainer/TopButtonRow/PauseButton.disabled = p
 	$Player1Area/VBoxContainer/TopButtonRow/RotateLeftButton.disabled = p
