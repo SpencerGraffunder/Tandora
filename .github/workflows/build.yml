@@ -115,15 +115,14 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git clone https://x-access-token:${{ secrets.PAGES_DEPLOY_TOKEN }}@github.com/NuclearQuads/nuclearquads.github.io.git pages_repo
-          rm -rf pages_repo/tandora
-          cp -r build_web pages_repo/tandora
-          # Remove any .nojekyll that Godot added inside the tandora folder
-          rm -f pages_repo/tandora/.nojekyll
-          # Remove .nojekyll from repo root if it snuck in
-          rm -f pages_repo/.nojekyll
+          git clone https://x-access-token:*** secrets.PAGES_DEPLOY_TOKEN }}@github.com/SpencerGraffunder/tandoraweb.git pages_repo
+          # Replace the repo contents with the fresh export at ROOT (Pages
+          # serves /tandoraweb/<file> from the repo root). Keep .git, README.md
+          # and .nojekyll — tandoraweb is NOT a Jekyll site, so .nojekyll must
+          # stay at root for GitHub Pages to serve the Godot files verbatim.
+          find pages_repo -mindepth 1 -maxdepth 1 ! -name .git ! -name README.md ! -name .nojekyll -exec rm -rf {} +
+          cp -r build_web/. pages_repo/
           cd pages_repo
-          git add tandora/
-          git add -u .nojekyll 2>/dev/null || true
+          git add -A
           git diff --cached --quiet || git commit -m "Deploy Tandora web build from ${{ github.sha }}"
           git push
