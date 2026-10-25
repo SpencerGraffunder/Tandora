@@ -115,13 +115,17 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git clone https://x-access-token:*** secrets.PAGES_DEPLOY_TOKEN }}@github.com/SpencerGraffunder/tandoraweb.git pages_repo
+          git clone "https://x-access-token:${{ secrets.PAGES_DEPLOY_TOKEN }}@github.com/SpencerGraffunder/tandoraweb.git" pages_repo
           # Replace the repo contents with the fresh export at ROOT (Pages
           # serves /tandoraweb/<file> from the repo root). Keep .git, README.md
           # and .nojekyll — tandoraweb is NOT a Jekyll site, so .nojekyll must
           # stay at root for GitHub Pages to serve the Godot files verbatim.
           find pages_repo -mindepth 1 -maxdepth 1 ! -name .git ! -name README.md ! -name .nojekyll -exec rm -rf {} +
           cp -r build_web/. pages_repo/
+          # Legacy Pages binds custom domains from the CNAME file
+          # committed in the branch; rewrite it on every deploy so the
+          # content wipe above never unbinds tandora.nuclearquads.com.
+          printf 'tandora.nuclearquads.com\n' > pages_repo/CNAME
           cd pages_repo
           git add -A
           git diff --cached --quiet || git commit -m "Deploy Tandora web build from ${{ github.sha }}"
